@@ -2,7 +2,7 @@ import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { Swords, Radio, Coins, PieChart, UserPlus, Wallet, Menu, X, BarChart3, LogIn, LogOut } from "lucide-react";
 import { useState } from "react";
 import { Logo } from "./Logo";
-import { ArcStatus } from "./ArcStatus";
+
 import { useWallet, truncate } from "@/lib/wallet";
 import { useAuth } from "@/lib/auth";
 
