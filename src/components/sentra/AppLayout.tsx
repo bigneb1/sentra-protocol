@@ -1,11 +1,14 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Swords, Radio, Coins, PieChart, UserPlus, Wallet, Menu, X } from "lucide-react";
+import { Swords, Radio, Coins, PieChart, UserPlus, Wallet, Menu, X, BarChart3, LogIn, LogOut } from "lucide-react";
 import { useState } from "react";
 import { Logo } from "./Logo";
+import { ArcStatus } from "./ArcStatus";
 import { useWallet, truncate } from "@/lib/wallet";
+import { useAuth } from "@/lib/auth";
 
 const nav = [
   { to: "/arena",     label: "Arena",         icon: Swords },
+  { to: "/analytics", label: "Analytics",     icon: BarChart3 },
   { to: "/calls",     label: "Calls",         icon: Radio },
   { to: "/delegate",  label: "Delegate",      icon: Coins },
   { to: "/portfolio", label: "Portfolio",     icon: PieChart },
@@ -15,7 +18,10 @@ const nav = [
 export function AppLayout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { connected, address, balance, connect, disconnect } = useWallet();
+  const { user, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  if (path === "/login") return <Outlet />;
 
   // Landing page = no sidebar chrome
   if (path === "/") {
