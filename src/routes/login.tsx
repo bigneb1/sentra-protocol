@@ -30,15 +30,15 @@ function Login() {
           options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
-        toast.push({ title: "Check your inbox", description: "Confirm your email to finish signup." });
+        toast.push("Check your inbox to confirm your email");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        toast.push({ title: "Signed in" });
+        toast.push("Signed in");
         nav({ to: "/arena" });
       }
     } catch (err: any) {
-      toast.push({ title: "Auth failed", description: err.message ?? String(err) });
+      toast.push(`Auth failed: ${err.message ?? String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -48,7 +48,7 @@ function Login() {
     setBusy(true);
     const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
     if (result.error) {
-      toast.push({ title: "Google sign-in failed", description: result.error.message });
+      toast.push(`Google sign-in failed: ${result.error.message}`);
       setBusy(false);
       return;
     }
