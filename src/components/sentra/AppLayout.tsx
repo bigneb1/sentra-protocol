@@ -105,12 +105,72 @@ export function AppLayout() {
         </header>
 
         {/* Top bar mobile */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border sticky top-0 z-30 bg-background">
-          <Link to="/"><Logo size={22} /></Link>
-          <button onClick={() => setMobileOpen(!mobileOpen)} className="p-2">
-            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
+        <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border sticky top-0 z-40 bg-background">
+          <Link to="/" onClick={() => setMobileOpen(false)}><Logo size={22} /></Link>
+          <div className="flex items-center gap-2">
+            <div
+              className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium"
+              style={{ background: "rgba(249,115,22,0.12)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#F97316] dot-pulse" />
+              Arc
+            </div>
+            <button onClick={() => setMobileOpen(!mobileOpen)} className="p-2" aria-label="Toggle menu">
+              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          </div>
         </header>
+
+        {/* Mobile menu drawer */}
+        {mobileOpen && (
+          <>
+            <div
+              className="md:hidden fixed inset-0 top-[57px] bg-background/80 backdrop-blur-sm z-30"
+              onClick={() => setMobileOpen(false)}
+            />
+            <div className="md:hidden fixed top-[57px] left-0 right-0 bg-card border-b border-border z-40 p-4 flex flex-col gap-1 shadow-lg">
+              {nav.map((n) => {
+                const active = path.startsWith(n.to);
+                const Icon = n.icon;
+                return (
+                  <Link
+                    key={n.to}
+                    to={n.to}
+                    onClick={() => setMobileOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-md text-sm transition-colors ${
+                      active ? "text-primary-light bg-primary/10 font-medium" : "text-muted-foreground hover:text-foreground hover:bg-elevated"
+                    }`}
+                  >
+                    <Icon size={18} />
+                    {n.label}
+                  </Link>
+                );
+              })}
+              <div className="border-t border-border mt-2 pt-3">
+                {connected && address ? (
+                  <button
+                    onClick={() => { disconnect(); setMobileOpen(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-md bg-elevated text-left"
+                  >
+                    <Wallet size={16} className="text-primary-light" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-mono text-xs truncate">{truncate(address)}</div>
+                      <div className="text-[11px] text-muted-foreground">${balance.toFixed(2)} USDC · Tap to disconnect</div>
+                    </div>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { connect(); setMobileOpen(false); }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+                  >
+                    <Wallet size={16} />
+                    Connect Wallet
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         <main className="flex-1 min-w-0 pb-20 md:pb-0">
           <Outlet />
