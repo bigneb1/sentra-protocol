@@ -8,6 +8,7 @@ import {
 
 import appCss from "../styles.css?url";
 import { WalletProvider } from "@/lib/wallet";
+import { AuthProvider } from "@/lib/auth";
 import { ToastProvider } from "@/lib/toast";
 import { AppLayout } from "@/components/sentra/AppLayout";
 
