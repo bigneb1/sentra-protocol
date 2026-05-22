@@ -8,6 +8,7 @@ import {
 
 import appCss from "../styles.css?url";
 import { WalletProvider } from "@/lib/wallet";
+import { AuthProvider } from "@/lib/auth";
 import { ToastProvider } from "@/lib/toast";
 import { AppLayout } from "@/components/sentra/AppLayout";
 
@@ -75,11 +76,13 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
-      <WalletProvider>
-        <ToastProvider>
-          <AppLayout />
-        </ToastProvider>
-      </WalletProvider>
+      <AuthProvider>
+        <WalletProvider>
+          <ToastProvider>
+            <AppLayout />
+          </ToastProvider>
+        </WalletProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -11,9 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as DelegateRouteImport } from './routes/delegate'
 import { Route as CallsRouteImport } from './routes/calls'
 import { Route as ArenaRouteImport } from './routes/arena'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AgentIdRouteImport } from './routes/agent.$id'
 
@@ -25,6 +27,11 @@ const RegisterRoute = RegisterRouteImport.update({
 const PortfolioRoute = PortfolioRouteImport.update({
   id: '/portfolio',
   path: '/portfolio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DelegateRoute = DelegateRouteImport.update({
@@ -42,6 +49,11 @@ const ArenaRoute = ArenaRouteImport.update({
   path: '/arena',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -55,18 +67,22 @@ const AgentIdRoute = AgentIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/arena': typeof ArenaRoute
   '/calls': typeof CallsRoute
   '/delegate': typeof DelegateRoute
+  '/login': typeof LoginRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/arena': typeof ArenaRoute
   '/calls': typeof CallsRoute
   '/delegate': typeof DelegateRoute
+  '/login': typeof LoginRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
@@ -74,9 +90,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/arena': typeof ArenaRoute
   '/calls': typeof CallsRoute
   '/delegate': typeof DelegateRoute
+  '/login': typeof LoginRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
@@ -85,27 +103,33 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/analytics'
     | '/arena'
     | '/calls'
     | '/delegate'
+    | '/login'
     | '/portfolio'
     | '/register'
     | '/agent/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/analytics'
     | '/arena'
     | '/calls'
     | '/delegate'
+    | '/login'
     | '/portfolio'
     | '/register'
     | '/agent/$id'
   id:
     | '__root__'
     | '/'
+    | '/analytics'
     | '/arena'
     | '/calls'
     | '/delegate'
+    | '/login'
     | '/portfolio'
     | '/register'
     | '/agent/$id'
@@ -113,9 +137,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalyticsRoute: typeof AnalyticsRoute
   ArenaRoute: typeof ArenaRoute
   CallsRoute: typeof CallsRoute
   DelegateRoute: typeof DelegateRoute
+  LoginRoute: typeof LoginRoute
   PortfolioRoute: typeof PortfolioRoute
   RegisterRoute: typeof RegisterRoute
   AgentIdRoute: typeof AgentIdRoute
@@ -135,6 +161,13 @@ declare module '@tanstack/react-router' {
       path: '/portfolio'
       fullPath: '/portfolio'
       preLoaderRoute: typeof PortfolioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/delegate': {
@@ -158,6 +191,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArenaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -177,9 +217,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalyticsRoute: AnalyticsRoute,
   ArenaRoute: ArenaRoute,
   CallsRoute: CallsRoute,
   DelegateRoute: DelegateRoute,
+  LoginRoute: LoginRoute,
   PortfolioRoute: PortfolioRoute,
   RegisterRoute: RegisterRoute,
   AgentIdRoute: AgentIdRoute,
@@ -187,13 +229,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

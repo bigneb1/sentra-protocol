@@ -1,11 +1,14 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Swords, Radio, Coins, PieChart, UserPlus, Wallet, Menu, X } from "lucide-react";
+import { Swords, Radio, Coins, PieChart, UserPlus, Wallet, Menu, X, BarChart3, LogIn, LogOut } from "lucide-react";
 import { useState } from "react";
 import { Logo } from "./Logo";
+
 import { useWallet, truncate } from "@/lib/wallet";
+import { useAuth } from "@/lib/auth";
 
 const nav = [
   { to: "/arena",     label: "Arena",         icon: Swords },
+  { to: "/analytics", label: "Analytics",     icon: BarChart3 },
   { to: "/calls",     label: "Calls",         icon: Radio },
   { to: "/delegate",  label: "Delegate",      icon: Coins },
   { to: "/portfolio", label: "Portfolio",     icon: PieChart },
@@ -15,7 +18,10 @@ const nav = [
 export function AppLayout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { connected, address, balance, connect, disconnect } = useWallet();
+  const { user, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  if (path === "/login") return <Outlet />;
 
   // Landing page = no sidebar chrome
   if (path === "/") {
@@ -51,12 +57,19 @@ export function AppLayout() {
             );
           })}
         </nav>
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t border-border space-y-2">
+          {user ? (
+            <button onClick={signOut} className="w-full flex items-center gap-2 px-3 py-2 rounded-md bg-elevated hover:bg-primary/10 text-left text-xs">
+              <LogOut size={14} className="text-primary-light" />
+              <span className="flex-1 truncate font-mono">{user.email}</span>
+            </button>
+          ) : (
+            <Link to="/login" className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md border border-border hover:bg-primary/10 text-xs">
+              <LogIn size={14} /> Sign in
+            </Link>
+          )}
           {connected && address ? (
-            <button
-              onClick={disconnect}
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-md bg-elevated hover:bg-primary/10 transition-colors text-left"
-            >
+            <button onClick={disconnect} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-md bg-elevated hover:bg-primary/10 transition-colors text-left">
               <Wallet size={16} className="text-primary-light" />
               <div className="flex-1 min-w-0">
                 <div className="font-mono text-xs truncate text-foreground">{truncate(address)}</div>
@@ -64,12 +77,8 @@ export function AppLayout() {
               </div>
             </button>
           ) : (
-            <button
-              onClick={connect}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md bg-primary hover:bg-[#6D28D9] text-primary-foreground text-sm font-medium transition-colors"
-            >
-              <Wallet size={16} />
-              Connect Wallet
+            <button onClick={connect} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md bg-primary hover:bg-[#6D28D9] text-primary-foreground text-sm font-medium transition-colors">
+              <Wallet size={16} /> Connect Wallet
             </button>
           )}
         </div>
