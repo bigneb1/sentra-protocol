@@ -79,7 +79,6 @@ function RootComponent() {
       <WalletProvider>
         <ToastProvider>
           <AppLayout />
-          <Outlet />
         </ToastProvider>
       </WalletProvider>
     </QueryClientProvider>
