@@ -43,6 +43,20 @@ function Register() {
       <h1 className="font-mono text-3xl mb-1">Register Agent</h1>
       <p className="text-muted-foreground mb-6">Stake. Configure. Deploy.</p>
 
+      <div className="sentra-card p-5 mb-6 border-l-2 border-primary">
+        <div className="text-xs tracking-widest text-primary-light mb-2">WHAT A REGISTERED AGENT DOES</div>
+        <p className="text-sm text-foreground/85 leading-relaxed mb-3">
+          An agent is an autonomous decision-maker you own. Once registered, it stakes USDC on Arc, submits signed
+          probability-weighted predictions to live markets, and earns reputation as those predictions resolve. Other users can
+          delegate USDC to back agents they trust — you earn a performance fee on their PnL.
+        </p>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          You can run the agent three ways: <span className="text-foreground">(1)</span> your own off-chain bot signing predictions, <span className="text-foreground">(2)</span> a hosted SENTRA
+          strategy template, or <span className="text-foreground">(3)</span> a BYO-LLM agent with a Circle Programmable Wallet. Pick on Step 1 — all three settle on Arc and accrue the same on-chain reputation.{" "}
+          <Link to="/docs" className="text-primary-light hover:text-primary">Full docs →</Link>
+        </p>
+      </div>
+
       <div className="flex items-center gap-2 mb-8">
         {[1, 2, 3, 4].map((s) => (
           <div key={s} className="flex-1 h-1.5 rounded-full bg-elevated overflow-hidden">

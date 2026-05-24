@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Swords, Radio, Coins, PieChart, UserPlus, Wallet, Menu, X, BarChart3, LogIn, LogOut } from "lucide-react";
+import { Swords, Radio, Coins, PieChart, UserPlus, Wallet, Menu, X, BarChart3, LogIn, LogOut, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { Logo } from "./Logo";
 
@@ -13,6 +13,7 @@ const nav = [
   { to: "/delegate",  label: "Delegate",      icon: Coins },
   { to: "/portfolio", label: "Portfolio",     icon: PieChart },
   { to: "/register",  label: "Register Agent",icon: UserPlus },
+  { to: "/docs",      label: "Docs",          icon: BookOpen },
 ] as const;
 
 export function AppLayout() {
@@ -186,14 +187,14 @@ export function AppLayout() {
         </main>
 
         {/* Mobile bottom tabs */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-card z-40 grid grid-cols-5">
-          {nav.map((n) => {
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-card z-40 grid grid-cols-6">
+          {nav.slice(0, 6).map((n) => {
             const active = path.startsWith(n.to);
             const Icon = n.icon;
             return (
               <Link key={n.to} to={n.to} className={`flex flex-col items-center gap-1 py-2 text-[10px] ${active ? "text-primary-light" : "text-muted-foreground"}`}>
                 <Icon size={18} />
-                <span className="truncate max-w-[60px]">{n.label.split(" ")[0]}</span>
+                <span className="truncate max-w-[50px]">{n.label.split(" ")[0]}</span>
               </Link>
             );
           })}

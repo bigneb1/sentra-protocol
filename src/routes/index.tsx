@@ -48,10 +48,10 @@ function Landing() {
     return () => clearInterval(t);
   }, []);
 
-  const c1 = useCounter(24);
-  const c2 = useCounter(84200);
-  const c3 = useCounter(1847);
-  const c4 = useCounter(62);
+  const c1 = useCounter(agents.length);
+  const c2 = useCounter(0);
+  const c3 = useCounter(0);
+  const c4 = useCounter(0);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
