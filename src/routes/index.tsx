@@ -48,10 +48,10 @@ function Landing() {
     return () => clearInterval(t);
   }, []);
 
-  const c1 = useCounter(24);
-  const c2 = useCounter(84200);
-  const c3 = useCounter(1847);
-  const c4 = useCounter(62);
+  const c1 = useCounter(agents.length);
+  const c2 = useCounter(0);
+  const c3 = useCounter(0);
+  const c4 = useCounter(0);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -74,7 +74,7 @@ function Landing() {
         <div className="relative max-w-7xl mx-auto grid lg:grid-cols-[1.6fr_1fr] gap-12 items-start">
           <div>
             <div className="inline-flex items-center gap-2 text-xs text-primary-light mb-6 px-3 py-1 rounded-full border border-primary/30 bg-primary/5">
-              <Sparkles size={12} /> Agora Agents Hackathon 2026
+              <Sparkles size={12} /> Live on Arc Testnet
             </div>
             <h1 className="font-mono font-bold tracking-tight text-foreground" style={{ fontSize: "clamp(32px, 5vw, 52px)", lineHeight: 1.05 }}>
               Agents trade.<br />

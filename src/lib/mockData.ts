@@ -65,38 +65,42 @@ function pnlSeries(seed: number, drift: number): { day: number; value: number }[
 }
 
 const agentSeeds = [
-  { name: "MacroHawk",  strategy: "Macro" as Strategy,       desc: "Top-down macro trader. Tracks Fed signals, treasury auctions, and global liquidity flows. Conservative size, high conviction.", rep: 84, brier: 0.14, sharpe: 2.31, wr: 0.71, cap: 25000, fill: 22500, p7: 4.8, p30: 18.2, total: 312, corr: 221, foll: 1842 },
-  { name: "VolArb",     strategy: "Macro" as Strategy,       desc: "Cross-market volatility arbitrage. Trades implied vs realized across rates, crypto, and equities.", rep: 78, brier: 0.18, sharpe: 1.92, wr: 0.66, cap: 20000, fill: 15300, p7: 2.1, p30: 11.6, total: 287, corr: 189, foll: 1104 },
-  { name: "SportsFlow", strategy: "Sports" as Strategy,      desc: "NFL & EPL betting markets. Pulls injury feeds, weather data, and line movement.", rep: 72, brier: 0.21, sharpe: 1.64, wr: 0.61, cap: 15000, fill: 12100, p7: 6.2, p30: 9.8, total: 198, corr: 121, foll: 873 },
-  { name: "CrowdFade",  strategy: "Contrarian" as Strategy,  desc: "Fades retail sentiment extremes. Volatile, high-variance — large swings both directions.", rep: 61, brier: 0.27, sharpe: 1.18, wr: 0.54, cap: 10000, fill: 9400,  p7: -3.4, p30: 7.2, total: 156, corr: 84, foll: 542 },
-  { name: "StableYield",strategy: "Yield" as Strategy,       desc: "Capital-efficient yield strategies. Boring, consistent, low drawdown.", rep: 75, brier: 0.19, sharpe: 2.08, wr: 0.69, cap: 30000, fill: 18200, p7: 0.8, p30: 3.4, total: 421, corr: 290, foll: 1320 },
-  { name: "TechSignal", strategy: "Tech" as Strategy,        desc: "Pattern recognition on price action. Momentum, breakouts, mean reversion across crypto.", rep: 69, brier: 0.22, sharpe: 1.51, wr: 0.63, cap: 18000, fill: 10800, p7: 3.6, p30: 12.1, total: 264, corr: 166, foll: 690 },
-  { name: "FedWatcher", strategy: "Macro" as Strategy,       desc: "Fed speak NLP & rate-decision prediction markets. Narrow scope, high accuracy.", rep: 81, brier: 0.16, sharpe: 2.14, wr: 0.74, cap: 22000, fill: 17600, p7: 1.9, p30: 8.7, total: 142, corr: 105, foll: 1456 },
-  { name: "AlphaBot",   strategy: "Contrarian" as Strategy,  desc: "Multi-strategy reinforcement-learned ensemble. Always learning, sometimes erratic.", rep: 66, brier: 0.24, sharpe: 1.36, wr: 0.58, cap: 12000, fill: 7200,  p7: -1.2, p30: 5.1, total: 209, corr: 121, foll: 612 },
+  { name: "MacroHawk",  strategy: "Macro" as Strategy,       desc: "Top-down macro trader. Tracks Fed signals, treasury auctions, and global liquidity flows." },
+  { name: "VolArb",     strategy: "Macro" as Strategy,       desc: "Cross-market volatility arbitrage across rates, crypto, and equities." },
+  { name: "SportsFlow", strategy: "Sports" as Strategy,      desc: "Sports betting markets with injury, weather, and line-movement data." },
+  { name: "CrowdFade",  strategy: "Contrarian" as Strategy,  desc: "Fades retail sentiment extremes. High-variance contrarian book." },
+  { name: "StableYield",strategy: "Yield" as Strategy,       desc: "Capital-efficient yield strategies. Low drawdown, consistent returns." },
+  { name: "TechSignal", strategy: "Tech" as Strategy,        desc: "Pattern recognition on price action. Momentum, breakouts, mean reversion." },
+  { name: "FedWatcher", strategy: "Macro" as Strategy,       desc: "Fed-speak NLP & rate-decision prediction markets. Narrow scope." },
+  { name: "AlphaBot",   strategy: "Contrarian" as Strategy,  desc: "Multi-strategy RL ensemble. Always learning." },
 ];
 
+// All performance stats start at zero. They populate as agents trade and the
+// protocol scores their predictions on-chain. delegationCap is a self-set ceiling.
 export const agents: Agent[] = agentSeeds.map((s, i) => ({
   id: s.name.toLowerCase(),
   name: s.name,
   strategy: s.strategy,
   description: s.desc,
   walletAddress: "0x" + Array.from({ length: 40 }, (_, k) => "abcdef0123456789"[(k * 7 + i * 13) % 16]).join(""),
-  stakedAmount: 1000 + i * 250,
-  reputation: s.rep,
-  brierScore: s.brier,
-  sharpeRatio: s.sharpe,
-  winRate: s.wr,
-  delegationCap: s.cap,
-  delegationFilled: s.fill,
-  pnl7d: s.p7,
-  pnl30d: s.p30,
-  totalPredictions: s.total,
-  correctPredictions: s.corr,
+  stakedAmount: 0,
+  reputation: 0,
+  brierScore: 0,
+  sharpeRatio: 0,
+  winRate: 0,
+  delegationCap: 0,
+  delegationFilled: 0,
+  pnl7d: 0,
+  pnl30d: 0,
+  totalPredictions: 0,
+  correctPredictions: 0,
   createdAt: `2025-${String(((i * 2) % 11) + 1).padStart(2, "0")}-15`,
-  followers: s.foll,
+  followers: 0,
   color: colors[i],
-  pnlHistory: pnlSeries(i + 1, s.p30),
+  pnlHistory: Array.from({ length: 30 }, (_, d) => ({ day: d + 1, value: 0 })),
 }));
+// suppress unused helper warning (kept for future seeded scenarios)
+void pnlSeries;
 
 const questions = [
   "Will Fed cut rates by 25bps in March?",

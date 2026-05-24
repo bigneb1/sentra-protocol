@@ -5,8 +5,12 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { WagmiProvider } from "wagmi";
+import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
+import "@rainbow-me/rainbowkit/styles.css";
 
 import appCss from "../styles.css?url";
+import { wagmiConfig } from "@/lib/wagmi";
 import { WalletProvider } from "@/lib/wallet";
 import { AuthProvider } from "@/lib/auth";
 import { ToastProvider } from "@/lib/toast";
@@ -80,13 +84,25 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <WalletProvider>
-          <ToastProvider>
-            <AppLayout />
-          </ToastProvider>
-        </WalletProvider>
-      </AuthProvider>
+      <WagmiProvider config={wagmiConfig}>
+        <RainbowKitProvider
+          theme={darkTheme({
+            accentColor: "#7C3AED",
+            accentColorForeground: "#FFFFFF",
+            borderRadius: "medium",
+            overlayBlur: "small",
+          })}
+          modalSize="compact"
+        >
+          <AuthProvider>
+            <WalletProvider>
+              <ToastProvider>
+                <AppLayout />
+              </ToastProvider>
+            </WalletProvider>
+          </AuthProvider>
+        </RainbowKitProvider>
+      </WagmiProvider>
     </QueryClientProvider>
   );
 }
