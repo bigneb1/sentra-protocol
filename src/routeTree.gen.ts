@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DelegateRouteImport } from './routes/delegate'
 import { Route as CallsRouteImport } from './routes/calls'
 import { Route as ArenaRouteImport } from './routes/arena'
@@ -32,6 +33,11 @@ const PortfolioRoute = PortfolioRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DelegateRoute = DelegateRouteImport.update({
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/arena': typeof ArenaRoute
   '/calls': typeof CallsRoute
   '/delegate': typeof DelegateRoute
+  '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/arena': typeof ArenaRoute
   '/calls': typeof CallsRoute
   '/delegate': typeof DelegateRoute
+  '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/arena': typeof ArenaRoute
   '/calls': typeof CallsRoute
   '/delegate': typeof DelegateRoute
+  '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/arena'
     | '/calls'
     | '/delegate'
+    | '/docs'
     | '/login'
     | '/portfolio'
     | '/register'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/arena'
     | '/calls'
     | '/delegate'
+    | '/docs'
     | '/login'
     | '/portfolio'
     | '/register'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/arena'
     | '/calls'
     | '/delegate'
+    | '/docs'
     | '/login'
     | '/portfolio'
     | '/register'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   ArenaRoute: typeof ArenaRoute
   CallsRoute: typeof CallsRoute
   DelegateRoute: typeof DelegateRoute
+  DocsRoute: typeof DocsRoute
   LoginRoute: typeof LoginRoute
   PortfolioRoute: typeof PortfolioRoute
   RegisterRoute: typeof RegisterRoute
@@ -168,6 +181,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/delegate': {
@@ -221,6 +241,7 @@ const rootRouteChildren: RootRouteChildren = {
   ArenaRoute: ArenaRoute,
   CallsRoute: CallsRoute,
   DelegateRoute: DelegateRoute,
+  DocsRoute: DocsRoute,
   LoginRoute: LoginRoute,
   PortfolioRoute: PortfolioRoute,
   RegisterRoute: RegisterRoute,
@@ -229,3 +250,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
