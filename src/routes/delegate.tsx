@@ -9,7 +9,15 @@ import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 
 export const Route = createFileRoute("/delegate")({
-  head: () => ({ meta: [{ title: "Delegation Hub — SENTRA" }, { name: "description", content: "Allocate USDC to autonomous trading agents on Arc." }] }),
+  head: () => ({
+    meta: [
+      { title: "Delegation Hub — SENTRA" },
+      {
+        name: "description",
+        content: "Allocate USDC to Arc agents with verifiable SENTRA track records.",
+      },
+    ],
+  }),
   component: Delegate,
 });
 
@@ -43,8 +51,15 @@ function Delegate() {
             <Wallet size={28} className="text-primary-light" />
           </div>
           <h2 className="font-mono text-xl mb-2">Connect your wallet</h2>
-          <p className="text-sm text-muted-foreground mb-6">Connect to delegate USDC to autonomous trading agents.</p>
-          <button onClick={connect} className="px-5 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] transition">Connect Wallet</button>
+          <p className="text-sm text-muted-foreground mb-6">
+            Connect to delegate USDC to agents with verifiable reputation.
+          </p>
+          <button
+            onClick={connect}
+            className="px-5 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] transition"
+          >
+            Connect Wallet
+          </button>
         </div>
       </div>
     );
@@ -68,7 +83,9 @@ function Delegate() {
   return (
     <div className="px-6 md:px-10 py-8 max-w-[1300px] mx-auto">
       <h1 className="font-mono text-3xl mb-1">Delegation Hub</h1>
-      <p className="text-muted-foreground mb-6">Allocate capital. Earn through their alpha.</p>
+      <p className="text-muted-foreground mb-6">
+        Allocate capital by reputation, scoring history, and risk limits.
+      </p>
 
       <div className="grid lg:grid-cols-[1.4fr_1fr] gap-6">
         <div>
@@ -77,28 +94,51 @@ function Delegate() {
             {confetti && (
               <div className="absolute inset-0 pointer-events-none">
                 {Array.from({ length: 60 }).map((_, i) => (
-                  <span key={i} className="confetti-piece" style={{
-                    left: `${(i * 17) % 100}%`,
-                    background: ["#7C3AED", "#A78BFA", "#D97706", "#10B981"][i % 4],
-                    animationDelay: `${(i % 10) * 0.05}s`
-                  }} />
+                  <span
+                    key={i}
+                    className="confetti-piece"
+                    style={{
+                      left: `${(i * 17) % 100}%`,
+                      background: ["#7C3AED", "#A78BFA", "#D97706", "#10B981"][i % 4],
+                      animationDelay: `${(i % 10) * 0.05}s`,
+                    }}
+                  />
                 ))}
               </div>
             )}
             <div className="flex items-center gap-2 mb-6">
               {[1, 2, 3, 4].map((s) => (
                 <div key={s} className="flex-1 h-1.5 rounded-full bg-elevated overflow-hidden">
-                  <div className="h-full transition-all duration-500" style={{ width: step >= s ? "100%" : "0%", background: "#7C3AED" }} />
+                  <div
+                    className="h-full transition-all duration-500"
+                    style={{ width: step >= s ? "100%" : "0%", background: "#7C3AED" }}
+                  />
                 </div>
               ))}
             </div>
 
             {step === 1 && (
               <div>
-                <div className="text-xs tracking-widest text-primary-light mb-2">STEP 1 · AMOUNT</div>
+                <div className="text-xs tracking-widest text-primary-light mb-2">
+                  STEP 1 · AMOUNT
+                </div>
                 <h3 className="font-mono text-xl mb-4">How much USDC?</h3>
-                <input type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} min={1} max={500} className="w-full bg-elevated px-3 py-2.5 rounded font-mono text-xl outline-none focus:ring-1 focus:ring-primary" />
-                <input type="range" value={amount} onChange={(e) => setAmount(Number(e.target.value))} min={1} max={500} className="w-full mt-4 accent-[#7C3AED]" />
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
+                  min={1}
+                  max={500}
+                  className="w-full bg-elevated px-3 py-2.5 rounded font-mono text-xl outline-none focus:ring-1 focus:ring-primary"
+                />
+                <input
+                  type="range"
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
+                  min={1}
+                  max={500}
+                  className="w-full mt-4 accent-[#7C3AED]"
+                />
                 <div className="text-sm text-muted-foreground mt-2 font-mono">
                   Est. annual return: <span className="text-foreground">${estReturn}</span>
                 </div>
@@ -106,12 +146,19 @@ function Delegate() {
             )}
             {step === 2 && (
               <div>
-                <div className="text-xs tracking-widest text-primary-light mb-2">STEP 2 · AGENT</div>
+                <div className="text-xs tracking-widest text-primary-light mb-2">
+                  STEP 2 · AGENT
+                </div>
                 <h3 className="font-mono text-xl mb-4">Pick your agent</h3>
-                <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className="w-full bg-elevated px-3 py-2.5 rounded outline-none focus:ring-1 focus:ring-primary">
+                <select
+                  value={agentId}
+                  onChange={(e) => setAgentId(e.target.value)}
+                  className="w-full bg-elevated px-3 py-2.5 rounded outline-none focus:ring-1 focus:ring-primary"
+                >
                   {agents.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name} · {a.strategy} · Brier {a.brierScore.toFixed(2)} · Cap ${(a.delegationCap - a.delegationFilled).toLocaleString()}
+                      {a.name} · {a.strategy} · Brier {a.brierScore.toFixed(2)} · Cap $
+                      {(a.delegationCap - a.delegationFilled).toLocaleString()}
                     </option>
                   ))}
                 </select>
@@ -119,19 +166,26 @@ function Delegate() {
                   <AgentAvatar name={selected.name} color={selected.color} size={36} />
                   <div>
                     <div className="font-mono">{selected.name}</div>
-                    <div className="mt-1"><StrategyChip strategy={selected.strategy} size="xs" /></div>
+                    <div className="mt-1">
+                      <StrategyChip strategy={selected.strategy} size="xs" />
+                    </div>
                   </div>
                 </div>
               </div>
             )}
             {step === 3 && (
               <div>
-                <div className="text-xs tracking-widest text-primary-light mb-2">STEP 3 · CONFIRM</div>
+                <div className="text-xs tracking-widest text-primary-light mb-2">
+                  STEP 3 · CONFIRM
+                </div>
                 <h3 className="font-mono text-xl mb-4">Review allocation</h3>
                 <dl className="space-y-3 text-sm">
                   <Row k="Agent" v={selected.name} />
                   <Row k="Amount" v={`${amount} USDC`} />
-                  <Row k="Expected return (1y)" v={`$${(amount * 0.04).toFixed(2)} – $${estReturn}`} />
+                  <Row
+                    k="Expected return (1y)"
+                    v={`$${(amount * 0.04).toFixed(2)} – $${estReturn}`}
+                  />
                   <Row k="Lock period" v="24 hours" />
                 </dl>
               </div>
@@ -142,8 +196,13 @@ function Delegate() {
                   <Check size={28} />
                 </div>
                 <h3 className="font-mono text-xl">Delegation submitted</h3>
-                <p className="text-sm text-muted-foreground mt-2">Tx <span className="font-mono">0xab12…ef89</span></p>
-                <Link to="/portfolio" className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9]">
+                <p className="text-sm text-muted-foreground mt-2">
+                  Tx <span className="font-mono">0xab12…ef89</span>
+                </p>
+                <Link
+                  to="/portfolio"
+                  className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9]"
+                >
                   View Portfolio <ArrowRight size={14} />
                 </Link>
               </div>
@@ -151,10 +210,28 @@ function Delegate() {
 
             {step < 4 && (
               <div className="flex justify-between mt-8">
-                <button onClick={back} disabled={step === 1} className="px-4 py-2 rounded text-sm text-muted-foreground hover:text-foreground disabled:opacity-30">Back</button>
-                {step < 3
-                  ? <button onClick={next} className="px-5 py-2 rounded bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm">Next</button>
-                  : <button onClick={finish} className="px-5 py-2 rounded bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm">Confirm Delegation</button>}
+                <button
+                  onClick={back}
+                  disabled={step === 1}
+                  className="px-4 py-2 rounded text-sm text-muted-foreground hover:text-foreground disabled:opacity-30"
+                >
+                  Back
+                </button>
+                {step < 3 ? (
+                  <button
+                    onClick={next}
+                    className="px-5 py-2 rounded bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    onClick={finish}
+                    className="px-5 py-2 rounded bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm"
+                  >
+                    Confirm Delegation
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -162,9 +239,21 @@ function Delegate() {
           {/* Baskets */}
           <div className="grid md:grid-cols-3 gap-4 mt-6">
             {[
-              { name: "Top 3 Brier", ids: ["macrohawk", "fedwatcher", "stableyield"], desc: "Lowest 3 Brier scores. Conservative." },
-              { name: "Max Diversification", ids: ["macrohawk", "sportsflow", "stableyield"], desc: "Mixed strategies. Balanced risk." },
-              { name: "High Risk/Reward", ids: ["crowdfade", "alphabot", "techsignal"], desc: "Volatile contrarian + tech. High variance." },
+              {
+                name: "Top 3 Brier",
+                ids: ["macrohawk", "fedwatcher", "stableyield"],
+                desc: "Lowest 3 Brier scores. Conservative.",
+              },
+              {
+                name: "Max Diversification",
+                ids: ["macrohawk", "sportsflow", "stableyield"],
+                desc: "Mixed strategies. Balanced risk.",
+              },
+              {
+                name: "High Risk/Reward",
+                ids: ["crowdfade", "alphabot", "techsignal"],
+                desc: "Volatile contrarian + tech. High variance.",
+              },
             ].map((b) => (
               <div key={b.name} className="sentra-card p-5 hover:border-primary transition">
                 <Layers size={18} className="text-primary-light mb-3" />
@@ -176,7 +265,10 @@ function Delegate() {
                     return <AgentAvatar key={id} name={a.name} color={a.color} size={26} />;
                   })}
                 </div>
-                <button onClick={() => applyBasket(b.name, b.ids)} className="mt-4 w-full px-3 py-2 rounded border border-primary text-primary-light hover:bg-primary/10 text-xs">
+                <button
+                  onClick={() => applyBasket(b.name, b.ids)}
+                  className="mt-4 w-full px-3 py-2 rounded border border-primary text-primary-light hover:bg-primary/10 text-xs"
+                >
                   Allocate Basket
                 </button>
               </div>
@@ -192,12 +284,22 @@ function Delegate() {
             <div className="text-[11px] text-muted-foreground mt-1">via Circle on Arc</div>
           </div>
           <div className="sentra-card p-5">
-            <h3 className="font-mono text-sm tracking-widest text-muted-foreground mb-3">ACTIVE ALLOCATIONS</h3>
+            <h3 className="font-mono text-sm tracking-widest text-muted-foreground mb-3">
+              ACTIVE ALLOCATIONS
+            </h3>
             <div className="h-40 relative">
               <ResponsiveContainer>
                 <PieChart>
-                  <Pie data={allocBreakdown} dataKey="amount" innerRadius={40} outerRadius={62} stroke="none">
-                    {allocBreakdown.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  <Pie
+                    data={allocBreakdown}
+                    dataKey="amount"
+                    innerRadius={40}
+                    outerRadius={62}
+                    stroke="none"
+                  >
+                    {allocBreakdown.map((d, i) => (
+                      <Cell key={i} fill={d.color} />
+                    ))}
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
@@ -209,7 +311,12 @@ function Delegate() {
                   <span className="flex-1">{al.name}</span>
                   <span className="font-mono">${al.current.toFixed(0)}</span>
                   <span className="font-mono text-[#10B981]">+{al.ret.toFixed(1)}%</span>
-                  <button onClick={() => toast.push(`Withdrew from ${al.name}`)} className="text-muted-foreground hover:text-foreground">×</button>
+                  <button
+                    onClick={() => toast.push(`Withdrew from ${al.name}`)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
             </div>

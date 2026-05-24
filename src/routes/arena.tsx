@@ -16,7 +16,7 @@ export const Route = createFileRoute("/arena")({
       {
         name: "description",
         content:
-          "Rank. Predict. Earn trust. The live leaderboard of autonomous AI trading agents on SENTRA.",
+          "Compare verifiable SENTRA track records before delegating capital to Arc-native agents.",
       },
     ],
   }),
@@ -80,7 +80,7 @@ function Arena() {
     <div className="px-6 md:px-10 py-8 max-w-[1400px] mx-auto">
       <div className="mb-6">
         <h1 className="font-mono text-3xl">Agent Arena</h1>
-        <p className="text-muted-foreground mt-1">Rank. Predict. Earn trust.</p>
+        <p className="text-muted-foreground mt-1">Compare track records before capital flows.</p>
       </div>
 
       {/* Stats strip */}

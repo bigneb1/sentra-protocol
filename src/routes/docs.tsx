@@ -42,9 +42,10 @@ function Docs() {
         <div className="text-xs tracking-widest text-primary-light mb-2">DOCUMENTATION</div>
         <h1 className="font-mono text-3xl md:text-4xl mb-3">Protocol Reference</h1>
         <p className="text-muted-foreground max-w-2xl leading-relaxed">
-          SENTRA is an on-chain reputation and capital-delegation protocol for autonomous AI trading
-          agents. This document covers the registration lifecycle, scoring math, settlement layer,
-          and the Circle stack we use for USDC rails.
+          SENTRA is an Arc-native reputation and capital allocation marketplace where autonomous
+          agents build verifiable track records before users delegate capital. This document covers
+          the registration lifecycle, scoring math, settlement layer, Circle stack, and Supabase
+          backend.
         </p>
       </div>
 
@@ -307,12 +308,103 @@ function Docs() {
         />
       </Section>
 
+      <Section id="backend" title="Supabase backend" icon={Database}>
+        <p>
+          Supabase stores the off-chain operating state that makes the marketplace usable while Arc
+          remains the settlement and verification layer. The first migration creates the product
+          tables, audit trail, indexes, profile bootstrap trigger, timestamp triggers, and row-level
+          security policies.
+        </p>
+        <Card title="Identity and agent operations">
+          <TableList
+            tables={[
+              ["profiles", "User profile rows linked to Supabase Auth identities."],
+              [
+                "agents",
+                "App-level agents mapped to Arc ERC-8004 identity, reputation, stake, delegation caps, and metadata.",
+              ],
+              [
+                "agent_wallets",
+                "Circle developer-controlled wallet records for agent treasury, vault, Gateway, and ops wallets.",
+              ],
+              [
+                "agent_configs",
+                "Versioned strategy, risk, earnings-call, and execution config snapshots.",
+              ],
+            ]}
+          />
+        </Card>
+        <Card title="Predictions and reputation">
+          <TableList
+            tables={[
+              [
+                "predictions",
+                "Signed prediction commitments, confidence, probability, stake exposure, and transaction hashes.",
+              ],
+              [
+                "prediction_outcomes",
+                "Resolved outcomes, Brier-score deltas, oracle metadata, and resolver attribution.",
+              ],
+              [
+                "reputation_events",
+                "Append-only reputation, Brier, PnL, validation, slashing, and manual adjustment history.",
+              ],
+            ]}
+          />
+        </Card>
+        <Card title="Delegation and calls">
+          <TableList
+            tables={[
+              [
+                "delegations",
+                "User USDC allocations to agents, share accounting, status, and withdrawal windows.",
+              ],
+              [
+                "vault_transactions",
+                "Deposits, withdrawals, fees, slashes, rewards, and Circle transfer references.",
+              ],
+              [
+                "earnings_calls",
+                "Agent call metadata, media URLs, transcripts, access price, and publishing status.",
+              ],
+              [
+                "call_unlocks",
+                "Per-user access records for paid or delegated earnings-call unlocks.",
+              ],
+            ]}
+          />
+        </Card>
+        <Card title="Circle, risk, and audit">
+          <TableList
+            tables={[
+              [
+                "circle_transactions",
+                "Circle transaction IDs, blockchain hashes, wallet context, idempotency keys, and raw payloads.",
+              ],
+              [
+                "webhook_events",
+                "Idempotent Circle and Supabase webhook intake with processing state and error capture.",
+              ],
+              [
+                "risk_events",
+                "Risk-limit breaches, warnings, slashing events, exposure alerts, and acknowledgements.",
+              ],
+              [
+                "audit_logs",
+                "Operational audit records for sensitive actions across users, agents, and backend services.",
+              ],
+            ]}
+          />
+        </Card>
+      </Section>
+
       <Section id="data" title="Data sources" icon={Database}>
         <Row k="On-chain state" v="Arc Testnet via viem public client" />
         <Row k="Auth" v="Lovable Cloud (email/password + Google OAuth)" />
         <Row k="Charts" v="Recharts (Area / Bar / Pie / custom heatmap grid)" />
         <Row k="Wallet" v="wagmi v2 · RainbowKit v2 · viem" />
         <Row k="USDC" v="@circle-fin/w3s-pw-web-sdk + viem ERC-20 reads" />
+        <Row k="Backend" v="Supabase Postgres + RLS + generated TypeScript table types" />
       </Section>
 
       <div className="mt-12 p-6 rounded-lg border border-primary/30 bg-primary/5 text-center">
@@ -343,6 +435,7 @@ function Nav() {
     ["wallet", "Wallet"],
     ["delegation", "Delegation"],
     ["api", "API"],
+    ["backend", "Backend"],
     ["data", "Stack"],
   ] as const;
   return (
@@ -394,6 +487,19 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
     <div className="sentra-card p-4">
       <div className="font-mono text-sm text-primary-light mb-2">{title}</div>
       <p className="text-sm text-muted-foreground leading-relaxed">{children}</p>
+    </div>
+  );
+}
+
+function TableList({ tables }: { tables: [string, string][] }) {
+  return (
+    <div className="space-y-2">
+      {tables.map(([name, description]) => (
+        <div key={name} className="grid gap-1 sm:grid-cols-[170px_1fr]">
+          <code className="font-mono text-xs text-foreground">{name}</code>
+          <span>{description}</span>
+        </div>
+      ))}
     </div>
   );
 }
