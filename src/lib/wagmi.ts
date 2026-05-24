@@ -1,30 +1,35 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { sepolia } from "wagmi/chains";
 import { http } from "wagmi";
 import type { Chain } from "viem";
-
-// Arc Testnet config. Arc settles on an Ethereum L2 testnet; until the dedicated
-// Arc RPC ships publicly we proxy via Sepolia (set VITE_ARC_RPC_URL to override).
-export const ARC_RPC_URL =
-  (import.meta.env.VITE_ARC_RPC_URL as string | undefined) ??
-  "https://ethereum-sepolia-rpc.publicnode.com";
+import {
+  ARC_CHAIN_ID,
+  ARC_EXPLORER,
+  ARC_NATIVE_CURRENCY_DECIMALS,
+  ARC_NETWORK_NAME,
+  ARC_RPC_URL,
+  ARC_USDC_ADDRESS,
+} from "./arcTestnet";
 
 export const arcTestnet: Chain = {
-  ...sepolia,
-  id: 11155111,
-  name: "Arc Testnet",
+  id: ARC_CHAIN_ID,
+  name: ARC_NETWORK_NAME,
+  nativeCurrency: {
+    name: "USDC",
+    symbol: "USDC",
+    decimals: ARC_NATIVE_CURRENCY_DECIMALS,
+  },
   rpcUrls: {
     default: { http: [ARC_RPC_URL] },
     public: { http: [ARC_RPC_URL] },
   },
   blockExplorers: {
-    default: { name: "Arc Explorer", url: "https://sepolia.etherscan.io" },
+    default: { name: "Arcscan", url: ARC_EXPLORER },
   },
   testnet: true,
 };
 
-// Circle USDC on Sepolia (acts as the testnet USDC for Arc settlement).
-export const USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
+// Arc uses USDC as gas. This address exposes the ERC-20 interface for USDC.
+export const USDC_ADDRESS = ARC_USDC_ADDRESS;
 
 const projectId =
   (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined) ??

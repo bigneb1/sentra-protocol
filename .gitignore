@@ -15,6 +15,13 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+.env*
+*.pem
+*-recovery-file.json
+artifacts
+cache
+coverage
+typechain-types
 
 # Wrangler / Cloudflare
 .wrangler/

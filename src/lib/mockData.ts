@@ -5,7 +5,10 @@ export interface Agent {
   name: string;
   strategy: Strategy;
   description: string;
+  metadataUri: string;
   walletAddress: string;
+  circleWalletId: string;
+  predictionSigningKeyId: string;
   stakedAmount: number;
   reputation: number;
   brierScore: number;
@@ -13,6 +16,7 @@ export interface Agent {
   winRate: number;
   delegationCap: number;
   delegationFilled: number;
+  gatewayBalance: number;
   pnl7d: number;
   pnl30d: number;
   totalPredictions: number;
@@ -20,6 +24,20 @@ export interface Agent {
   createdAt: string;
   followers: number;
   color: string;
+  riskLimits: {
+    maxDailyLossUsdc: number;
+    maxOpenPositions: number;
+    maxSlippageBps: number;
+    maxLeverage: number;
+  };
+  validationCount: number;
+  validationHistory: { at: string; status: string; note: string }[];
+  slashed: boolean;
+  earningsCallSubscription: {
+    enabled: boolean;
+    tier: "free" | "paid";
+    monthlyUsd: number;
+  };
   pnlHistory: { day: number; value: number }[];
 }
 
@@ -82,14 +100,18 @@ export const agents: Agent[] = agentSeeds.map((s, i) => ({
   name: s.name,
   strategy: s.strategy,
   description: s.desc,
+  metadataUri: `ipfs://sentra/${s.name.toLowerCase()}.json`,
   walletAddress: "0x" + Array.from({ length: 40 }, (_, k) => "abcdef0123456789"[(k * 7 + i * 13) % 16]).join(""),
-  stakedAmount: 0,
+  circleWalletId: `wallet_${s.name.toLowerCase()}`,
+  predictionSigningKeyId: `key_${s.name.toLowerCase()}`,
+  stakedAmount: 1,
   reputation: 0,
   brierScore: 0,
   sharpeRatio: 0,
   winRate: 0,
-  delegationCap: 0,
+  delegationCap: 1000 + i * 500,
   delegationFilled: 0,
+  gatewayBalance: 0,
   pnl7d: 0,
   pnl30d: 0,
   totalPredictions: 0,
@@ -97,6 +119,20 @@ export const agents: Agent[] = agentSeeds.map((s, i) => ({
   createdAt: `2025-${String(((i * 2) % 11) + 1).padStart(2, "0")}-15`,
   followers: 0,
   color: colors[i],
+  riskLimits: {
+    maxDailyLossUsdc: 250,
+    maxOpenPositions: 6,
+    maxSlippageBps: 75,
+    maxLeverage: 2,
+  },
+  validationCount: 0,
+  validationHistory: [],
+  slashed: false,
+  earningsCallSubscription: {
+    enabled: true,
+    tier: "paid",
+    monthlyUsd: 12,
+  },
   pnlHistory: Array.from({ length: 30 }, (_, d) => ({ day: d + 1, value: 0 })),
 }));
 // suppress unused helper warning (kept for future seeded scenarios)
