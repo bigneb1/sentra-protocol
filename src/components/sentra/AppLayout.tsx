@@ -31,7 +31,7 @@ const nav = [
 
 export function AppLayout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const { connected, address, balance, connect, disconnect } = useWallet();
+  const { connected, address, balance, disconnect } = useWallet();
   const { user, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -41,6 +41,7 @@ export function AppLayout() {
   if (path === "/") {
     return <Outlet />;
   }
+  const userLabel = user?.email ?? (user?.id ? user.id.slice(0, 8) : "Signed in");
 
   return (
     <div className="min-h-screen flex bg-background text-foreground">
@@ -80,7 +81,7 @@ export function AppLayout() {
               className="w-full flex items-center gap-2 px-3 py-2 rounded-md bg-elevated hover:bg-primary/10 text-left text-xs"
             >
               <LogOut size={14} className="text-primary-light" />
-              <span className="flex-1 truncate font-mono">{user.email}</span>
+              <span className="flex-1 truncate font-mono">{userLabel}</span>
             </button>
           ) : (
             <Link
@@ -104,12 +105,12 @@ export function AppLayout() {
               </div>
             </button>
           ) : (
-            <button
-              onClick={connect}
+            <Link
+              to="/login"
               className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md bg-primary hover:bg-[#6D28D9] text-primary-foreground text-sm font-medium transition-colors"
             >
-              <Wallet size={16} /> Connect Wallet
-            </button>
+              <Wallet size={16} /> Wallet sign-in
+            </Link>
           )}
         </div>
       </aside>
@@ -137,12 +138,12 @@ export function AppLayout() {
                 <span className="font-mono">{truncate(address)}</span>
               </div>
             ) : (
-              <button
-                onClick={connect}
+              <Link
+                to="/login"
                 className="px-4 py-1.5 rounded-md bg-primary hover:bg-[#6D28D9] text-primary-foreground text-sm font-medium transition-colors"
               >
-                Connect Wallet
-              </button>
+                Sign in
+              </Link>
             )}
           </div>
         </header>
@@ -219,16 +220,16 @@ export function AppLayout() {
                     </div>
                   </button>
                 ) : (
-                  <button
+                  <Link
+                    to="/login"
                     onClick={() => {
-                      connect();
                       setMobileOpen(false);
                     }}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium"
                   >
                     <Wallet size={16} />
-                    Connect Wallet
-                  </button>
+                    Wallet sign-in
+                  </Link>
                 )}
               </div>
             </div>

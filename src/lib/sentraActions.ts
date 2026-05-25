@@ -9,6 +9,7 @@ import {
   ARC_ERC8004_REPUTATION_REGISTRY,
   ARC_USDC_ADDRESS,
 } from "@/lib/arcTestnet";
+import { SENTRA_ARC_TESTNET_DEPLOYMENT } from "@/lib/agentTypes";
 import {
   computeBrierScore,
   computeNextReputation,
@@ -57,13 +58,24 @@ async function getSupabaseAdmin() {
 
 function getProtocolContracts(): ProtocolContracts {
   return {
-    agentRegistry: process.env.VITE_SENTRA_AGENT_REGISTRY_ADDRESS ?? "",
-    stakeVault: process.env.VITE_SENTRA_STAKE_VAULT_ADDRESS ?? "",
-    delegationVault: process.env.VITE_SENTRA_DELEGATION_VAULT_ADDRESS ?? "",
-    predictionRegistry: process.env.VITE_SENTRA_PREDICTION_REGISTRY_ADDRESS ?? "",
-    reputationOracle: process.env.VITE_SENTRA_REPUTATION_ORACLE_ADDRESS ?? "",
-    slashingModule: process.env.VITE_SENTRA_SLASHING_MODULE_ADDRESS ?? "",
-    callAccess: process.env.VITE_SENTRA_CALL_ACCESS_ADDRESS ?? "",
+    agentRegistry:
+      process.env.VITE_SENTRA_AGENT_REGISTRY_ADDRESS ?? SENTRA_ARC_TESTNET_DEPLOYMENT.agentRegistry,
+    stakeVault:
+      process.env.VITE_SENTRA_STAKE_VAULT_ADDRESS ?? SENTRA_ARC_TESTNET_DEPLOYMENT.stakeVault,
+    delegationVault:
+      process.env.VITE_SENTRA_DELEGATION_VAULT_ADDRESS ??
+      SENTRA_ARC_TESTNET_DEPLOYMENT.delegationVault,
+    predictionRegistry:
+      process.env.VITE_SENTRA_PREDICTION_REGISTRY_ADDRESS ??
+      SENTRA_ARC_TESTNET_DEPLOYMENT.predictionRegistry,
+    reputationOracle:
+      process.env.VITE_SENTRA_REPUTATION_ORACLE_ADDRESS ??
+      SENTRA_ARC_TESTNET_DEPLOYMENT.reputationOracle,
+    slashingModule:
+      process.env.VITE_SENTRA_SLASHING_MODULE_ADDRESS ??
+      SENTRA_ARC_TESTNET_DEPLOYMENT.slashingModule,
+    callAccess:
+      process.env.VITE_SENTRA_CALL_ACCESS_ADDRESS ?? SENTRA_ARC_TESTNET_DEPLOYMENT.callAccess,
   };
 }
 

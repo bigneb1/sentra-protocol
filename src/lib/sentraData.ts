@@ -28,6 +28,7 @@ export interface Agent {
   pnl7d: number;
   pnl30d: number;
   totalPredictions: number;
+  resolvedPredictions: number;
   correctPredictions: number;
   createdAt: string;
   followers: number;
@@ -166,12 +167,8 @@ function agentIdBytes(agent: Tables<"agents">) {
   return null;
 }
 
-function pnlSeries(seed: number, base = 0): { day: number; value: number }[] {
-  if (!base) return Array.from({ length: 30 }, (_, day) => ({ day: day + 1, value: 0 }));
-  return Array.from({ length: 30 }, (_, day) => ({
-    day: day + 1,
-    value: Math.round(base * (1 + Math.sin(seed + day * 0.45) * 0.015) * 100) / 100,
-  }));
+function emptySeries(): { day: number; value: number }[] {
+  return Array.from({ length: 30 }, (_, day) => ({ day: day + 1, value: 0 }));
 }
 
 async function readDelegatedFromArc(
@@ -224,8 +221,6 @@ function mapAgent(
   const delegated = delegations
     .filter((delegation) => delegation.agent_id === agent.id && delegation.status !== "withdrawn")
     .reduce((sum, delegation) => sum + num(delegation.amount_usdc), 0);
-  const pnlBase = delegated + num(wallet?.usdc_stake);
-
   return {
     id: agent.slug,
     databaseId: agent.id,
@@ -247,6 +242,7 @@ function mapAgent(
     pnl7d: 0,
     pnl30d: 0,
     totalPredictions: agentPredictions.length,
+    resolvedPredictions: resolved.length,
     correctPredictions: correct,
     createdAt: asDay(agent.created_at),
     followers: agent.followers_count,
@@ -265,7 +261,7 @@ function mapAgent(
       tier: activeConfig?.earnings_call_tier === "free" ? "free" : "paid",
       monthlyUsd: num(activeConfig?.earnings_call_monthly_usd),
     },
-    pnlHistory: pnlSeries(index, pnlBase),
+    pnlHistory: emptySeries(),
   };
 }
 
@@ -325,8 +321,14 @@ function emptyDataset(): SentraDataset {
   };
 }
 
-function isHasRolePermissionError(error: { message?: string } | null | undefined) {
-  return error?.message?.toLowerCase().includes("permission denied for function has_role") ?? false;
+function isRecoverableSupabaseReadError(error: { message?: string } | null | undefined) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return (
+    message.includes("permission denied for function has_role") ||
+    message.includes("permission denied for table") ||
+    message.includes("permission denied for schema") ||
+    (message.includes("relation") && message.includes("does not exist"))
+  );
 }
 
 function optionalRows<T>(
@@ -341,9 +343,16 @@ function optionalRows<T>(
 }
 
 export async function loadSentraDataset(userId?: string | null): Promise<SentraDataset> {
-  const resolvedUserId = await resolveCurrentUserId(userId);
-  const [agentsResult, predictionsResult, outcomesResult, callsResult, txResult, reputationResult] =
-    await Promise.all([
+  try {
+    const resolvedUserId = await resolveCurrentUserId(userId);
+    const [
+      agentsResult,
+      predictionsResult,
+      outcomesResult,
+      callsResult,
+      txResult,
+      reputationResult,
+    ] = await Promise.all([
       supabase.from("agents").select("*").order("created_at", { ascending: false }),
       supabase.from("predictions").select("*").order("submitted_at", { ascending: false }),
       supabase.from("prediction_outcomes").select("*").order("resolved_at", { ascending: false }),
@@ -358,106 +367,115 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
         .limit(16),
     ]);
 
-  const firstError = agentsResult.error ?? predictionsResult.error ?? callsResult.error;
+    const firstError = agentsResult.error ?? predictionsResult.error ?? callsResult.error;
 
-  if (firstError) {
-    if (isHasRolePermissionError(firstError)) {
-      console.warn(`SENTRA Supabase policy read failed: ${firstError.message}`);
+    if (firstError) {
+      if (isRecoverableSupabaseReadError(firstError)) {
+        console.warn(`SENTRA Supabase read skipped: ${firstError.message}`);
+        return emptyDataset();
+      }
+      throw firstError;
+    }
+
+    let configRows: Tables<"agent_configs">[] = [];
+    let walletRows: Tables<"agent_wallets">[] = [];
+    let allDelegationRows: Tables<"delegations">[] = [];
+    let delegationRows: Tables<"delegations">[] = [];
+
+    if (resolvedUserId) {
+      const [configsResult, walletsResult, allDelegationsResult, delegationsResult] =
+        await Promise.all([
+          supabase.from("agent_configs").select("*").order("created_at", { ascending: false }),
+          supabase.from("agent_wallets").select("*").order("created_at", { ascending: false }),
+          supabase.from("delegations").select("*").order("created_at", { ascending: false }),
+          supabase
+            .from("delegations")
+            .select("*")
+            .eq("delegator_id", resolvedUserId)
+            .order("created_at", { ascending: false }),
+        ]);
+
+      configRows = optionalRows("agent_configs", configsResult);
+      walletRows = optionalRows("agent_wallets", walletsResult);
+      allDelegationRows = optionalRows("delegations", allDelegationsResult);
+      delegationRows = optionalRows("delegations", delegationsResult);
+    }
+
+    const agentRows = agentsResult.data ?? [];
+    const predictionRows = predictionsResult.data ?? [];
+    const outcomeRows = optionalRows("prediction_outcomes", outcomesResult);
+    const vaultTransactionRows = optionalRows("vault_transactions", txResult);
+    const reputationRows = optionalRows("reputation_events", reputationResult);
+    const fallbackDelegated = new Map<string, number>();
+    allDelegationRows.forEach((delegation) => {
+      if (delegation.status === "withdrawn") return;
+      fallbackDelegated.set(
+        delegation.agent_id,
+        (fallbackDelegated.get(delegation.agent_id) ?? 0) + num(delegation.amount_usdc),
+      );
+    });
+    const arcDelegated = await readDelegatedFromArc(agentRows, fallbackDelegated);
+    const byUuid = new Map<string, string>();
+    const agents = agentRows.map((agent, index) => {
+      const mapped = mapAgent(
+        agent,
+        predictionRows,
+        outcomeRows,
+        configRows,
+        walletRows,
+        allDelegationRows,
+        arcDelegated,
+        index,
+      );
+      byUuid.set(agent.id, mapped.id);
+      return mapped;
+    });
+    const outcomeByPrediction = new Map(
+      outcomeRows.map((outcome) => [outcome.prediction_id, outcome]),
+    );
+    const predictions = predictionRows.map((prediction) => ({
+      ...mapPrediction(prediction, outcomeByPrediction.get(prediction.id)),
+      agentId: byUuid.get(prediction.agent_id) ?? prediction.agent_id,
+    }));
+    const earningsCalls = (callsResult.data ?? []).map((call) => ({
+      ...mapCall(call),
+      agentId: byUuid.get(call.agent_id) ?? call.agent_id,
+    }));
+    const delegations = delegationRows.map((delegation) => ({
+      id: delegation.id,
+      agentId: byUuid.get(delegation.agent_id) ?? delegation.agent_id,
+      amount: num(delegation.amount_usdc),
+      shares: num(delegation.amount_usdc),
+      entry: asDay(delegation.created_at),
+      current: num(delegation.amount_usdc),
+      status: delegation.status,
+      entryTxHash: delegation.tx_hash,
+      exitTxHash: null,
+    }));
+    const vaultTransactions = vaultTransactionRows.map((tx) => ({
+      id: tx.id,
+      hash: tx.tx_hash,
+      kind: tx.kind,
+      amount: num(tx.amount_usdc),
+      date: asDay(tx.created_at),
+      status: tx.tx_hash ? "confirmed" : "created",
+    }));
+    const activityFeed =
+      reputationRows.map(
+        (event) =>
+          `${byUuid.get(event.agent_id) ?? "Agent"} ${event.reason ?? "reputation update"} · reputation ${event.new_score}`,
+      ) ?? [];
+
+    return { agents, predictions, earningsCalls, delegations, vaultTransactions, activityFeed };
+  } catch (error) {
+    if (isRecoverableSupabaseReadError(error as { message?: string })) {
+      console.warn(
+        `SENTRA Supabase read skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return emptyDataset();
     }
-    throw firstError;
+    throw error;
   }
-
-  let configRows: Tables<"agent_configs">[] = [];
-  let walletRows: Tables<"agent_wallets">[] = [];
-  let allDelegationRows: Tables<"delegations">[] = [];
-  let delegationRows: Tables<"delegations">[] = [];
-
-  if (resolvedUserId) {
-    const [configsResult, walletsResult, allDelegationsResult, delegationsResult] =
-      await Promise.all([
-        supabase.from("agent_configs").select("*").order("created_at", { ascending: false }),
-        supabase.from("agent_wallets").select("*").order("created_at", { ascending: false }),
-        supabase.from("delegations").select("*").order("created_at", { ascending: false }),
-        supabase
-          .from("delegations")
-          .select("*")
-          .eq("delegator_id", resolvedUserId)
-          .order("created_at", { ascending: false }),
-      ]);
-
-    configRows = optionalRows("agent_configs", configsResult);
-    walletRows = optionalRows("agent_wallets", walletsResult);
-    allDelegationRows = optionalRows("delegations", allDelegationsResult);
-    delegationRows = optionalRows("delegations", delegationsResult);
-  }
-
-  const agentRows = agentsResult.data ?? [];
-  const predictionRows = predictionsResult.data ?? [];
-  const outcomeRows = optionalRows("prediction_outcomes", outcomesResult);
-  const vaultTransactionRows = optionalRows("vault_transactions", txResult);
-  const reputationRows = optionalRows("reputation_events", reputationResult);
-  const fallbackDelegated = new Map<string, number>();
-  allDelegationRows.forEach((delegation) => {
-    if (delegation.status === "withdrawn") return;
-    fallbackDelegated.set(
-      delegation.agent_id,
-      (fallbackDelegated.get(delegation.agent_id) ?? 0) + num(delegation.amount_usdc),
-    );
-  });
-  const arcDelegated = await readDelegatedFromArc(agentRows, fallbackDelegated);
-  const byUuid = new Map<string, string>();
-  const agents = agentRows.map((agent, index) => {
-    const mapped = mapAgent(
-      agent,
-      predictionRows,
-      outcomeRows,
-      configRows,
-      walletRows,
-      allDelegationRows,
-      arcDelegated,
-      index,
-    );
-    byUuid.set(agent.id, mapped.id);
-    return mapped;
-  });
-  const outcomeByPrediction = new Map(
-    outcomeRows.map((outcome) => [outcome.prediction_id, outcome]),
-  );
-  const predictions = predictionRows.map((prediction) => ({
-    ...mapPrediction(prediction, outcomeByPrediction.get(prediction.id)),
-    agentId: byUuid.get(prediction.agent_id) ?? prediction.agent_id,
-  }));
-  const earningsCalls = (callsResult.data ?? []).map((call) => ({
-    ...mapCall(call),
-    agentId: byUuid.get(call.agent_id) ?? call.agent_id,
-  }));
-  const delegations = delegationRows.map((delegation) => ({
-    id: delegation.id,
-    agentId: byUuid.get(delegation.agent_id) ?? delegation.agent_id,
-    amount: num(delegation.amount_usdc),
-    shares: num(delegation.amount_usdc),
-    entry: asDay(delegation.created_at),
-    current: num(delegation.amount_usdc),
-    status: delegation.status,
-    entryTxHash: delegation.tx_hash,
-    exitTxHash: null,
-  }));
-  const vaultTransactions = vaultTransactionRows.map((tx) => ({
-    id: tx.id,
-    hash: tx.tx_hash,
-    kind: tx.kind,
-    amount: num(tx.amount_usdc),
-    date: asDay(tx.created_at),
-    status: tx.tx_hash ? "confirmed" : "created",
-  }));
-  const activityFeed =
-    reputationRows.map(
-      (event) =>
-        `${byUuid.get(event.agent_id) ?? "Agent"} ${event.reason ?? "reputation update"} · reputation ${event.new_score}`,
-    ) ?? [];
-
-  return { agents, predictions, earningsCalls, delegations, vaultTransactions, activityFeed };
 }
 
 export function getAgent(dataset: SentraDataset, id: string) {

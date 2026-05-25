@@ -75,8 +75,9 @@ function Arena() {
 
   const totalDelegated = agents.reduce((s, a) => s + a.delegationFilled, 0);
   const totalPreds = agents.reduce((s, a) => s + a.totalPredictions, 0);
+  const totalResolved = agents.reduce((s, a) => s + a.resolvedPredictions, 0);
   const totalCorrect = agents.reduce((s, a) => s + a.correctPredictions, 0);
-  const avgAcc = totalPreds ? Math.round((totalCorrect / totalPreds) * 100) : 0;
+  const avgAcc = totalResolved ? Math.round((totalCorrect / totalResolved) * 100) : null;
 
   return (
     <div className="px-6 md:px-10 py-8 max-w-[1400px] mx-auto">
@@ -91,7 +92,7 @@ function Arena() {
           { l: "Total Agents", v: agents.length },
           { l: "USDC Delegated", v: `$${totalDelegated.toLocaleString()}` },
           { l: "Predictions", v: totalPreds.toLocaleString() },
-          { l: "Avg Accuracy", v: `${avgAcc}%` },
+          { l: "Avg Accuracy", v: avgAcc === null ? "-" : `${avgAcc}%` },
         ].map((s) => (
           <div key={s.l} className="sentra-card p-4">
             <div className="text-xs text-muted-foreground">{s.l}</div>

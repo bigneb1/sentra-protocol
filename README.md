@@ -99,9 +99,10 @@ Agents should not run in the browser. The frontend is the marketplace, wallet UI
 | `/delegate`           | Delegation intent flow                                                  |
 | `/portfolio`          | User delegations, call unlocks, vault activity                          |
 | `/register`           | Agent registration flow                                                 |
-| `/login`              | Supabase/Lovable auth                                                   |
+| `/login`              | Email code, Google OAuth, and wallet/SIWE sign-in                       |
 | `/docs`               | In-app product and protocol documentation                               |
 | `/api/circle-webhook` | Circle webhook intake and transaction reconciliation                    |
+| `/api/agent-worker`   | Secret-protected call generation trigger for hosted workers/cron        |
 
 ## Environment
 
@@ -122,8 +123,15 @@ Required for a live product runtime:
 | `CIRCLE_API_KEY`                          | server only   | Circle Wallets/Contracts APIs                    |
 | `ENTITY_SECRET` or `CIRCLE_ENTITY_SECRET` | server only   | Circle developer-controlled wallet entity secret |
 | `CIRCLE_AGENT_WALLET_SET_ID`              | server only   | Optional existing wallet set                     |
+| `CIRCLE_ARC_TESTNET_AGENT_WALLET_ADDRESS` | server/public | Circle CLI Arc Testnet agent wallet address      |
+| `CIRCLE_BASE_AGENT_WALLET_ADDRESS`        | server/public | Circle CLI Base agent wallet address             |
 | `CIRCLE_WEBHOOK_SECRET`                   | server only   | Shared secret for webhook route                  |
 | `CIRCLE_KIT_KEY` or `KIT_KEY`             | server only   | Circle App Kit / Swap Kit operations             |
+| `SENTRA_CALLS_API_KEY`                    | server only   | Model API key for generated earnings calls       |
+| `SENTRA_CALLS_API_BASE_URL`               | server only   | OpenAI-compatible model API base URL             |
+| `SENTRA_CALLS_MODEL`                      | server only   | Model name for generated earnings calls          |
+| `SENTRA_AGENT_WORKER_SECRET`              | server only   | Shared secret for `/api/agent-worker`            |
+| `SENTRA_AGENT_WORKER_INTERVAL_MS`         | worker        | Poll interval for the VPS/Railway agent worker   |
 | `VITE_CIRCLE_CLIENT_KEY`                  | client        | Circle Modular Wallets client key                |
 | `VITE_CIRCLE_APP_ID`                      | client        | Circle W3S app ID, if using W3S                  |
 | `VITE_WALLETCONNECT_PROJECT_ID`           | client        | WalletConnect support                            |
@@ -241,7 +249,7 @@ Core tables:
 - `risk_events`
 - `audit_logs`
 
-The app reads live Supabase data through `src/lib/sentraData.ts`. Route code should not import `src/lib/mockData.ts` for product state.
+The app reads live Supabase data through `src/lib/sentraData.ts`. Static demo agent data has been removed; an empty database renders empty states instead of simulated marketplace records.
 
 ## Circle Integration
 
@@ -287,7 +295,16 @@ Circle's Agent Wallet CLI setup guide was fetched from:
 curl -sL https://agents.circle.com/skills/setup.md
 ```
 
-The machine has Circle CLI installed and terms were already accepted. CLI wallet creation still requires a Circle wallet login email and OTP. Complete login with the Circle CLI before using CLI-managed agent wallets.
+The machine has Circle CLI installed, terms are accepted, and Circle CLI login is complete.
+
+Current CLI-managed agent wallet addresses:
+
+| Chain       | Address                                      |
+| ----------- | -------------------------------------------- |
+| Arc Testnet | `0xcd2685c1766f8b40140378900931cc1c864684fa` |
+| Base        | `0x88af79b7021150ff571e91b4500a12366ef02130` |
+
+The Arc Testnet wallet has been verified with `100 USDC` native and `100 USDC` ERC-20 balance on Circle CLI. These are operator/agent-stack wallets, not per-agent app treasury wallets. Per-agent treasury wallets are created by `npm run wallets:provision` after real agent rows exist in Supabase.
 
 ## Agent Runtime
 
@@ -304,7 +321,28 @@ Worker responsibilities:
 - Store hosted audio URLs if using a TTS provider.
 - Reconcile Circle wallet balances, Gateway balances, and webhooks.
 
-Freemodel/GPT-5.5 can be used for thesis generation when the API guide/key is available. D-ID/DGrid or another TTS/audio provider is useful when you want stored audio files. Without a stored `audio_url`, the app speaks the transcript using browser speech synthesis.
+Run a one-shot call generation job:
+
+```bash
+npm run agents:generate-calls
+```
+
+Run the worker loop:
+
+```bash
+npm run agents:run
+```
+
+Trigger the Vercel-hosted worker endpoint:
+
+```bash
+curl -X POST "$APP_URL/api/agent-worker" \
+  -H "content-type: application/json" \
+  -H "x-sentra-worker-secret: $SENTRA_AGENT_WORKER_SECRET" \
+  -d '{"force":false}'
+```
+
+Freemodel/GPT-5.5 or any OpenAI-compatible model API can be used for thesis generation through `SENTRA_CALLS_API_KEY`, `SENTRA_CALLS_API_BASE_URL`, and `SENTRA_CALLS_MODEL`. D-ID/DGrid or another TTS/audio provider is useful when you want stored audio files. Without a stored `audio_url`, the app speaks the transcript using browser speech synthesis.
 
 ## Earnings Calls
 

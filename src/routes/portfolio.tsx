@@ -20,13 +20,13 @@ export const Route = createFileRoute("/portfolio")({
 function portfolioSeries(total: number) {
   return Array.from({ length: 30 }, (_, day) => ({
     day: day + 1,
-    value: total ? Math.round(total * (1 + Math.sin(day * 0.4) * 0.01) * 100) / 100 : 0,
+    value: total,
   }));
 }
 
 function Portfolio() {
   const { agents, delegations: allocs, vaultTransactions: txs } = Route.useLoaderData();
-  const { connected, connect } = useWallet();
+  const { connected } = useWallet();
   const { session } = useAuth();
   const toast = useToast();
   const [followed, setFollowed] = useState<string[]>([]);
@@ -41,13 +41,13 @@ function Portfolio() {
           <div className="w-16 h-16 mx-auto rounded-full bg-primary/15 flex items-center justify-center mb-5">
             <Wallet size={28} className="text-primary-light" />
           </div>
-          <h2 className="font-mono text-xl mb-2">Connect to view portfolio</h2>
-          <button
-            onClick={connect}
+          <h2 className="font-mono text-xl mb-2">Wallet sign-in required</h2>
+          <Link
+            to="/login"
             className="mt-4 px-5 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9]"
           >
-            Connect Wallet
-          </button>
+            Wallet sign-in
+          </Link>
         </div>
       </div>
     );

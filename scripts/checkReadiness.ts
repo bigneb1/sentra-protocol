@@ -26,6 +26,7 @@ const requiredEnv = [
   "SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "CIRCLE_API_KEY",
+  "SENTRA_AGENT_WORKER_SECRET",
 ] as const;
 const deployOnlyEnv = ["ARC_TESTNET_DEPLOYER_PRIVATE_KEY"] as const;
 
@@ -43,6 +44,11 @@ const missingEnv = [
   ...requiredEnv.filter((key) => !process.env[key]),
   !(process.env.ENTITY_SECRET ?? process.env.CIRCLE_ENTITY_SECRET) &&
     "ENTITY_SECRET or CIRCLE_ENTITY_SECRET",
+  !(
+    process.env.SENTRA_CALLS_API_KEY ??
+    process.env.FREEMODEL_API_KEY ??
+    process.env.OPENAI_API_KEY
+  ) && "SENTRA_CALLS_API_KEY or FREEMODEL_API_KEY or OPENAI_API_KEY",
 ].filter(Boolean) as string[];
 const missingDeployOnlyEnv = deployOnlyEnv.filter((key) => !process.env[key]);
 const missingContracts = Object.entries(requiredContracts).filter(

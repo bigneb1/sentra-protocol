@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowRight, Lock, Sparkles, Radio, TrendingUp } from "lucide-react";
 import { Logo } from "@/components/sentra/Logo";
-import { loadSentraDataset } from "@/lib/sentraData";
+import { getAgent, loadSentraDataset } from "@/lib/sentraData";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { ReputationRing } from "@/components/sentra/ReputationRing";
 import { AgentAvatar } from "@/components/sentra/Avatar";
@@ -24,10 +24,8 @@ export const Route = createFileRoute("/")({
 });
 
 type StatItem = {
-  v: number;
+  v: string;
   l: string;
-  p?: string;
-  suffix?: string;
 };
 
 function useCounter(target: number, duration = 1400) {
@@ -49,15 +47,15 @@ function useCounter(target: number, duration = 1400) {
 function Landing() {
   const dataset = Route.useLoaderData();
   const { agents } = dataset;
-  const activityFeed =
-    dataset.activityFeed.length > 0
-      ? dataset.activityFeed
-      : ["No protocol activity yet. Register an agent to start the live feed."];
+  const activityFeed = dataset.activityFeed;
   const spot = agents.slice(0, 3);
+  const latestCall = dataset.earningsCalls[0];
+  const latestCallAgent = latestCall ? getAgent(dataset, latestCall.agentId) : null;
   const totalDelegated = Math.round(agents.reduce((sum, agent) => sum + agent.delegationFilled, 0));
   const totalPredictions = agents.reduce((sum, agent) => sum + agent.totalPredictions, 0);
+  const totalResolved = agents.reduce((sum, agent) => sum + agent.resolvedPredictions, 0);
   const totalCorrect = agents.reduce((sum, agent) => sum + agent.correctPredictions, 0);
-  const avgAccuracy = totalPredictions ? Math.round((totalCorrect / totalPredictions) * 100) : 0;
+  const avgAccuracy = totalResolved ? Math.round((totalCorrect / totalResolved) * 100) : 0;
   const [idx, setIdx] = useState(0);
   useEffect(() => {
     if (spot.length === 0) return;
@@ -67,6 +65,7 @@ function Landing() {
 
   const [feedOffset, setFeedOffset] = useState(0);
   useEffect(() => {
+    if (activityFeed.length === 0) return;
     const t = setInterval(() => setFeedOffset((o) => (o + 1) % activityFeed.length), 2000);
     return () => clearInterval(t);
   }, [activityFeed.length]);
@@ -156,18 +155,14 @@ function Landing() {
             <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4">
               {(
                 [
-                  { v: c1, l: "Active Agents", p: "" },
-                  { v: c2, l: "USDC Delegated", p: "$", suffix: "" },
-                  { v: c3, l: "Predictions", p: "" },
-                  { v: c4, l: "Avg Accuracy", p: "", suffix: "%" },
+                  { v: c1.toLocaleString(), l: "Active Agents" },
+                  { v: `$${c2.toLocaleString()}`, l: "USDC Delegated" },
+                  { v: c3.toLocaleString(), l: "Predictions" },
+                  { v: totalResolved ? `${c4}%` : "-", l: "Avg Accuracy" },
                 ] satisfies StatItem[]
               ).map((s, i) => (
                 <div key={i} className="sentra-card p-4 fade-up">
-                  <div className="font-mono text-2xl text-foreground">
-                    {s.p}
-                    {s.v.toLocaleString()}
-                    {s.suffix ?? ""}
-                  </div>
+                  <div className="font-mono text-2xl text-foreground">{s.v}</div>
                   <div className="text-xs text-muted-foreground mt-1">{s.l}</div>
                 </div>
               ))}
@@ -181,22 +176,36 @@ function Landing() {
               <h3 className="font-mono text-sm tracking-widest text-muted-foreground">
                 LIVE ACTIVITY
               </h3>
-              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#10B981] dot-pulse" />
+              <span
+                className={`ml-auto w-1.5 h-1.5 rounded-full ${activityFeed.length ? "bg-[#10B981] dot-pulse" : "bg-muted-foreground"}`}
+              />
             </div>
-            <ul className="flex-1 overflow-hidden space-y-3">
-              {Array.from({ length: 8 }).map((_, i) => {
-                const item = activityFeed[(feedOffset + i) % activityFeed.length];
-                return (
-                  <li key={i} className="text-sm text-foreground/90 fade-up flex gap-2">
-                    <span className="font-mono text-[10px] text-muted-foreground mt-1 shrink-0">
-                      {String(i * 2 + 1).padStart(2, "0")}:
-                      {String(((feedOffset + i) * 7) % 60).padStart(2, "0")}
-                    </span>
-                    <span className="text-foreground/85">{item}</span>
-                  </li>
-                );
-              })}
-            </ul>
+            {activityFeed.length > 0 ? (
+              <ul className="flex-1 overflow-hidden space-y-3">
+                {Array.from({ length: Math.min(8, activityFeed.length) }).map((_, i) => {
+                  const item = activityFeed[(feedOffset + i) % activityFeed.length];
+                  return (
+                    <li key={i} className="text-sm text-foreground/90 fade-up flex gap-2">
+                      <span className="font-mono text-[10px] text-muted-foreground mt-1 shrink-0">
+                        {String(i * 2 + 1).padStart(2, "0")}:
+                        {String(((feedOffset + i) * 7) % 60).padStart(2, "0")}
+                      </span>
+                      <span className="text-foreground/85">{item}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-center">
+                <div>
+                  <div className="font-mono text-sm">No live activity yet</div>
+                  <p className="text-xs text-muted-foreground mt-2 max-w-[260px]">
+                    Activity appears only after real agents submit predictions, reputation events,
+                    or paid call unlocks.
+                  </p>
+                </div>
+              </div>
+            )}
           </aside>
         </div>
       </section>
@@ -324,14 +333,23 @@ function Landing() {
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
             <div className="flex-1">
               <div className="text-xs tracking-widest text-primary-light mb-2">EARNINGS CALLS</div>
-              <h3 className="font-mono text-2xl mb-2">MacroHawk — Daily Earnings Call</h3>
+              <h3 className="font-mono text-2xl mb-2">
+                {latestCall
+                  ? `${latestCallAgent?.name ?? "Agent"} - ${latestCall.title}`
+                  : "No earnings calls published yet"}
+              </h3>
               <p className="text-sm text-muted-foreground">
-                Each agent auto-generates a signed audio report of their trading day. Gated by
-                nanopayment.
+                {latestCall
+                  ? latestCall.summary || latestCall.transcript
+                  : "Calls appear after a live agent worker publishes an API-generated report."}
               </p>
               <div className="mt-5 flex items-center gap-2 text-xs font-mono">
                 <Lock size={12} className="text-gold" />
-                <span className="text-gold">0.01 USDC to unlock · 03:42</span>
+                <span className="text-gold">
+                  {latestCall
+                    ? `${latestCall.subscriptionCost.toFixed(2)} USDC to unlock · ${Math.floor(latestCall.durationSeconds / 60)}:${String(latestCall.durationSeconds % 60).padStart(2, "0")}`
+                    : "0.01 USDC paid calls when published"}
+                </span>
               </div>
             </div>
             <div className="w-full md:w-[300px]">

@@ -61,28 +61,36 @@ function Analytics() {
   const totals = useMemo(() => {
     const delegated = agents.reduce((s, a) => s + a.delegationFilled, 0);
     const preds = agents.reduce((s, a) => s + a.totalPredictions, 0);
+    const resolvedPreds = agents.reduce((s, a) => s + a.resolvedPredictions, 0);
     const correct = agents.reduce((s, a) => s + a.correctPredictions, 0);
     const pnlField = windowDays <= 7 ? "pnl7d" : "pnl30d";
     const avgPnl = agents.length ? agents.reduce((s, a) => s + a[pnlField], 0) / agents.length : 0;
-    return { delegated, preds, accuracy: preds ? (correct / preds) * 100 : 0, avgPnl };
+    return {
+      delegated,
+      preds,
+      resolvedPreds,
+      accuracy: resolvedPreds ? (correct / resolvedPreds) * 100 : null,
+      avgPnl: agents.length ? avgPnl : null,
+    };
   }, [agents, windowDays]);
 
   const accuracyTrend = useMemo(() => {
-    const len = agents.length
-      ? Math.min(windowDays, Math.min(...agents.map((a) => a.pnlHistory.length)))
-      : windowDays;
-    return Array.from({ length: len }, (_, i) => {
-      const wins = agents.filter(
-        (a) => (a.pnlHistory[i]?.value ?? 0) >= (a.pnlHistory[i - 1]?.value ?? 0),
-      ).length;
-      const acc = agents.length ? (wins / agents.length) * 100 : 0;
+    const resolved = predictions.filter((prediction) => prediction.status === "resolved");
+    return Array.from({ length: windowDays }, (_, i) => {
+      const cutoff = new Date();
+      cutoff.setHours(23, 59, 59, 999);
+      cutoff.setDate(cutoff.getDate() - (windowDays - i - 1));
+      const throughDay = resolved.filter(
+        (prediction) => new Date(prediction.submittedAt).getTime() <= cutoff.getTime(),
+      );
+      const correct = throughDay.filter((prediction) => prediction.outcome === "correct").length;
+      const acc = throughDay.length ? (correct / throughDay.length) * 100 : 0;
       return {
         day: `D${i + 1}`,
         accuracy: Math.round(acc),
-        market: Math.max(0, Math.round(acc - 4)),
       };
     });
-  }, [agents, windowDays]);
+  }, [predictions, windowDays]);
 
   const pnlBreakdown = useMemo(
     () => agents.map((a) => ({ name: a.name.slice(0, 10), pnl7: a.pnl7d, pnl30: a.pnl30d })),
@@ -92,9 +100,11 @@ function Analytics() {
   const stratAllocation = useMemo(() => {
     const map = new Map<string, number>();
     agents.forEach((a) =>
-      map.set(a.strategy, (map.get(a.strategy) ?? 0) + Math.max(a.delegationFilled, 1)),
+      map.set(a.strategy, (map.get(a.strategy) ?? 0) + Math.max(a.delegationFilled, 0)),
     );
-    return [...map.entries()].map(([name, value]) => ({ name, value, color: STRAT_COLORS[name] }));
+    return [...map.entries()]
+      .filter(([, value]) => value > 0)
+      .map(([name, value]) => ({ name, value, color: STRAT_COLORS[name] }));
   }, [agents]);
 
   // Strategy x Metric heatmap. Aggregates avg metric per strategy.
@@ -136,7 +146,7 @@ function Analytics() {
   );
 
   const recentResolved = predictions.filter((p) => p.status === "resolved").slice(0, 6);
-  const hasData = totals.preds > 0;
+  const hasData = totals.resolvedPreds > 0;
 
   return (
     <div className="px-4 md:px-10 py-6 md:py-8 max-w-[1400px] mx-auto">
@@ -211,12 +221,20 @@ function Analytics() {
           },
           { l: "Active Agents", v: agents.length, icon: Activity, c: "#10B981" },
           { l: "Predictions", v: totals.preds.toLocaleString(), icon: Activity, c: "#3B82F6" },
-          { l: "Avg Accuracy", v: `${totals.accuracy.toFixed(1)}%`, icon: Activity, c: "#A78BFA" },
+          {
+            l: "Avg Accuracy",
+            v: totals.accuracy === null ? "-" : `${totals.accuracy.toFixed(1)}%`,
+            icon: Activity,
+            c: "#A78BFA",
+          },
           {
             l: `Avg ${windowDays}d PnL`,
-            v: `${totals.avgPnl > 0 ? "+" : ""}${totals.avgPnl.toFixed(1)}%`,
-            icon: totals.avgPnl >= 0 ? TrendingUp : TrendingDown,
-            c: totals.avgPnl >= 0 ? "#10B981" : "#EF4444",
+            v:
+              totals.avgPnl === null
+                ? "-"
+                : `${totals.avgPnl > 0 ? "+" : ""}${totals.avgPnl.toFixed(1)}%`,
+            icon: (totals.avgPnl ?? 0) >= 0 ? TrendingUp : TrendingDown,
+            c: (totals.avgPnl ?? 0) >= 0 ? "#10B981" : "#EF4444",
           },
         ].map((k) => {
           const Icon = k.icon;
@@ -244,15 +262,13 @@ function Analytics() {
               Prediction Accuracy
             </div>
             <div className="font-mono text-lg mt-1">
-              {totals.accuracy.toFixed(1)}% protocol avg · {windowDays}d
+              {totals.accuracy === null ? "-" : `${totals.accuracy.toFixed(1)}%`} protocol avg ·{" "}
+              {windowDays}d
             </div>
           </div>
           <div className="hidden md:flex items-center gap-3 text-xs">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-[#7C3AED]" /> Agents
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-muted-foreground" /> Market
             </span>
           </div>
         </div>
@@ -294,14 +310,6 @@ function Analytics() {
                 stroke="#7C3AED"
                 strokeWidth={2}
                 fill="url(#accFill)"
-              />
-              <Line
-                type="monotone"
-                dataKey="market"
-                stroke="#5B5478"
-                strokeWidth={1}
-                dot={false}
-                strokeDasharray="3 3"
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -403,44 +411,52 @@ function Analytics() {
             Capital by Strategy
           </div>
           <div className="font-mono text-sm mb-4 text-muted-foreground">Delegation allocation</div>
-          <div className="h-[200px]">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={stratAllocation}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={45}
-                  outerRadius={75}
-                  paddingAngle={2}
-                >
-                  {stratAllocation.map((s) => (
-                    <Cell key={s.name} fill={s.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: "#12082A",
-                    border: "1px solid rgba(124,58,237,0.3)",
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  formatter={(v: number) => `$${v.toLocaleString()}`}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="space-y-1.5 mt-2">
-            {stratAllocation.map((s) => (
-              <div key={s.name} className="flex items-center gap-2 text-xs">
-                <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
-                <span>{s.name}</span>
-                <span className="ml-auto font-mono text-muted-foreground">
-                  ${(s.value / 1000).toFixed(1)}k
-                </span>
+          {stratAllocation.length > 0 ? (
+            <>
+              <div className="h-[200px]">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={stratAllocation}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={45}
+                      outerRadius={75}
+                      paddingAngle={2}
+                    >
+                      {stratAllocation.map((s) => (
+                        <Cell key={s.name} fill={s.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        background: "#12082A",
+                        border: "1px solid rgba(124,58,237,0.3)",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      formatter={(v: number) => `$${v.toLocaleString()}`}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
+              <div className="space-y-1.5 mt-2">
+                {stratAllocation.map((s) => (
+                  <div key={s.name} className="flex items-center gap-2 text-xs">
+                    <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                    <span>{s.name}</span>
+                    <span className="ml-auto font-mono text-muted-foreground">
+                      ${(s.value / 1000).toFixed(1)}k
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-center text-xs text-muted-foreground">
+              No delegation capital has settled yet.
+            </div>
+          )}
         </div>
       </div>
 

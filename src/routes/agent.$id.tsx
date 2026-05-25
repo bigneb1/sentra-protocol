@@ -81,13 +81,14 @@ function AgentPage() {
     return agent.pnlHistory.slice(-n);
   }, [agent, range]);
 
-  const acc =
-    agent.totalPredictions > 0
-      ? Math.round((agent.correctPredictions / agent.totalPredictions) * 100)
-      : 0;
+  const resolvedCount = agent.resolvedPredictions;
+  const acc = resolvedCount ? Math.round((agent.correctPredictions / resolvedCount) * 100) : null;
+  const avgConfidence = preds.length
+    ? Math.round(preds.reduce((sum, prediction) => sum + prediction.confidence, 0) / preds.length)
+    : null;
   const donutData = [
     { name: "Correct", value: agent.correctPredictions, color: "#10B981" },
-    { name: "Wrong", value: agent.totalPredictions - agent.correctPredictions, color: "#EF4444" },
+    { name: "Wrong", value: resolvedCount - agent.correctPredictions, color: "#EF4444" },
   ];
 
   const similar = dataset.agents
@@ -101,7 +102,7 @@ function AgentPage() {
 
   const delegate = async () => {
     if (!wallet.connected) {
-      wallet.connect();
+      toast.push("Sign in with a wallet before delegating");
       return;
     }
     if (!authHeaders) {
@@ -240,8 +241,10 @@ function AgentPage() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <div className="font-mono text-2xl">{acc}%</div>
-                    <div className="text-[11px] text-muted-foreground">correct</div>
+                    <div className="font-mono text-2xl">{acc === null ? "-" : `${acc}%`}</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {resolvedCount ? "correct" : "unscored"}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -336,7 +339,7 @@ function AgentPage() {
 
         {tab === "calls" && (
           <div className="mt-6 space-y-3">
-            {calls.map((c, i) => (
+            {calls.map((c) => (
               <Link
                 key={c.id}
                 to="/calls/$id"
@@ -354,7 +357,7 @@ function AgentPage() {
                   <Waveform bars={32} height={28} />
                 </div>
                 <div className="text-xs font-mono inline-flex items-center gap-1 text-gold">
-                  {i === 0 ? (
+                  {c.isFreePreview ? (
                     "Free preview"
                   ) : (
                     <>
@@ -379,19 +382,19 @@ function AgentPage() {
           <h3 className="font-mono text-sm mb-4 text-muted-foreground tracking-widest">STATS</h3>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <Stat label="Brier">
-              <BrierBadge value={agent.brierScore} />
+              {resolvedCount ? <BrierBadge value={agent.brierScore} /> : "-"}
             </Stat>
-            <Stat label="Sharpe">{agent.sharpeRatio.toFixed(2)}</Stat>
-            <Stat label="Win Rate">{Math.round(agent.winRate * 100)}%</Stat>
-            <Stat label="Avg Conf.">{68}%</Stat>
-            <Stat label="Biggest Win" tone="green">
-              +{(agent.pnl30d * 0.4).toFixed(1)}%
+            <Stat label="Sharpe">{agent.sharpeRatio ? agent.sharpeRatio.toFixed(2) : "-"}</Stat>
+            <Stat label="Win Rate">
+              {resolvedCount ? `${Math.round(agent.winRate * 100)}%` : "-"}
             </Stat>
-            <Stat label="Biggest Loss" tone="red">
-              -{(agent.pnl30d * 0.2).toFixed(1)}%
+            <Stat label="Avg Conf.">{avgConfidence === null ? "-" : `${avgConfidence}%`}</Stat>
+            <Stat label="Total Preds">{agent.totalPredictions}</Stat>
+            <Stat label="Resolved">{agent.resolvedPredictions}</Stat>
+            <Stat label="Staked">{agent.stakedAmount ? `$${agent.stakedAmount}` : "-"}</Stat>
+            <Stat label="Delegated">
+              {agent.delegationFilled ? `$${agent.delegationFilled.toLocaleString()}` : "-"}
             </Stat>
-            <Stat label="Preds / mo">{Math.round(agent.totalPredictions / 6)}</Stat>
-            <Stat label="Streak">{Math.max(1, Math.round(agent.reputation / 12))}</Stat>
           </div>
         </div>
 
@@ -416,17 +419,22 @@ function AgentPage() {
             />
             <span className="text-xs text-muted-foreground">USDC</span>
           </div>
-          <button
-            onClick={delegate}
-            disabled={capLeft <= 0}
-            className="w-full mt-4 px-4 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed transition text-sm font-medium"
-          >
-            {capLeft <= 0
-              ? "Cap Full"
-              : wallet.connected
-                ? "Delegate"
-                : "Connect Wallet to Delegate"}
-          </button>
+          {!wallet.connected && capLeft > 0 ? (
+            <Link
+              to="/login"
+              className="block text-center w-full mt-4 px-4 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] transition text-sm font-medium"
+            >
+              Wallet sign-in to delegate
+            </Link>
+          ) : (
+            <button
+              onClick={delegate}
+              disabled={capLeft <= 0}
+              className="w-full mt-4 px-4 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed transition text-sm font-medium"
+            >
+              {capLeft <= 0 ? "Cap Full" : "Delegate"}
+            </button>
+          )}
           <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
             24h lock period. Returns are not guaranteed. Stake may be slashed if reputation falls
             below 20/100.

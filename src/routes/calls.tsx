@@ -34,8 +34,13 @@ function Calls() {
   const toast = useToast();
   const { session } = useAuth();
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState("");
   const [bannerOpen, setBannerOpen] = useState(true);
-  const filtered = earningsCalls.filter((c) => agentFilter === "all" || c.agentId === agentFilter);
+  const filtered = earningsCalls.filter(
+    (c) =>
+      (agentFilter === "all" || c.agentId === agentFilter) &&
+      (!dateFilter || c.date.slice(0, 10) === dateFilter),
+  );
   const authHeaders = session?.access_token
     ? { authorization: `Bearer ${session.access_token}` }
     : undefined;
@@ -95,7 +100,8 @@ function Calls() {
         </select>
         <input
           type="date"
-          defaultValue="2026-01-20"
+          value={dateFilter}
+          onChange={(event) => setDateFilter(event.target.value)}
           className="sentra-card px-3 py-2 text-sm bg-card outline-none"
         />
       </div>
@@ -240,10 +246,10 @@ function CallRow({
       )}
 
       <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <Score label="Yesterday PnL" value={call.pnlSummary} />
-        <Score label="Brier Δ" value={`-0.0${parseInt(call.id.slice(-1)) + 1}`} />
-        <Score label="Hit" value={String(2 + (parseInt(call.id.slice(-1)) % 3))} tone="green" />
-        <Score label="Missed" value={String(1 + (parseInt(call.id.slice(-1)) % 2))} tone="red" />
+        <Score label="Price" value={call.isFreePreview ? "Free" : "0.01 USDC"} />
+        <Score label="PnL Summary" value={call.pnlSummary || "Not reported"} />
+        <Score label="Biggest Win" value={call.biggestWin || "None logged"} tone="green" />
+        <Score label="Biggest Loss" value={call.biggestLoss || "None logged"} tone="red" />
       </div>
     </div>
   );
@@ -254,7 +260,7 @@ function Score({ label, value, tone }: { label: string; value: string; tone?: "g
     <div className="sentra-card p-3 !shadow-none">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div
-        className={`font-mono mt-1 ${tone === "green" ? "text-[#10B981]" : tone === "red" ? "text-[#EF4444]" : ""}`}
+        className={`font-mono mt-1 text-xs leading-5 line-clamp-2 break-words ${tone === "green" ? "text-[#10B981]" : tone === "red" ? "text-[#EF4444]" : ""}`}
       >
         {value}
       </div>

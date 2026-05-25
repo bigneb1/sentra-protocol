@@ -27,7 +27,7 @@ export const Route = createFileRoute("/delegate")({
 function Delegate() {
   const dataset = Route.useLoaderData();
   const { agents, delegations } = dataset;
-  const { connected, connect, balance } = useWallet();
+  const { connected, balance } = useWallet();
   const { session } = useAuth();
   const toast = useToast();
 
@@ -55,16 +55,16 @@ function Delegate() {
           <div className="w-16 h-16 mx-auto rounded-full bg-primary/15 flex items-center justify-center mb-5">
             <Wallet size={28} className="text-primary-light" />
           </div>
-          <h2 className="font-mono text-xl mb-2">Connect your wallet</h2>
+          <h2 className="font-mono text-xl mb-2">Wallet sign-in required</h2>
           <p className="text-sm text-muted-foreground mb-6">
-            Connect to delegate USDC to agents with verifiable reputation.
+            Sign in with a wallet on the auth page before delegating USDC to agents.
           </p>
-          <button
-            onClick={connect}
+          <Link
+            to="/login"
             className="px-5 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] transition"
           >
-            Connect Wallet
-          </button>
+            Wallet sign-in
+          </Link>
         </div>
       </div>
     );
