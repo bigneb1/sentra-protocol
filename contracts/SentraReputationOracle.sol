@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./interfaces/ISentraAgentRegistry.sol";
 
-contract SentraReputationOracle {
+contract SentraReputationOracle is Pausable {
     ISentraAgentRegistry public immutable registry;
 
     struct ReputationSnapshot {
@@ -19,7 +20,21 @@ contract SentraReputationOracle {
     event ReputationUpdated(bytes32 indexed agentId, uint32 reputation, uint32 brierScore, uint32 validationCount);
 
     constructor(address registryAddress) {
+        require(registryAddress != address(0), "registry required");
         registry = ISentraAgentRegistry(registryAddress);
+    }
+
+    modifier onlyProtocolOwner() {
+        require(msg.sender == registry.owner(), "only protocol owner");
+        _;
+    }
+
+    function pause() external onlyProtocolOwner {
+        _pause();
+    }
+
+    function unpause() external onlyProtocolOwner {
+        _unpause();
     }
 
     function recordOutcome(
@@ -27,8 +42,7 @@ contract SentraReputationOracle {
         uint32 reputation,
         uint32 brierScore,
         uint32 validationCount
-    ) external {
-        require(msg.sender == registry.owner(), "only protocol owner");
+    ) external onlyProtocolOwner whenNotPaused {
         require(registry.isRegistered(agentId), "agent missing");
         require(reputation <= 10_000, "reputation too high");
         require(brierScore <= 10_000, "brier too high");

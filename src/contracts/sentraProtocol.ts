@@ -55,6 +55,13 @@ export const sentraStakeVaultAbi = [
 export const sentraDelegationVaultAbi = [
   {
     type: "function",
+    name: "totalDelegated",
+    stateMutability: "view",
+    inputs: [{ name: "agentId", type: "bytes32" }],
+    outputs: [{ name: "amount", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "delegate",
     stateMutability: "nonpayable",
     inputs: [

@@ -22,7 +22,9 @@ export function SkeletonRow({ cols = 6 }: { cols?: number }) {
 export function SkeletonTable({ rows = 6, cols = 6 }: { rows?: number; cols?: number }) {
   return (
     <div className="sentra-card overflow-hidden">
-      {Array.from({ length: rows }).map((_, i) => <SkeletonRow key={i} cols={cols} />)}
+      {Array.from({ length: rows }).map((_, i) => (
+        <SkeletonRow key={i} cols={cols} />
+      ))}
     </div>
   );
 }

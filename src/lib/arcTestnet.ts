@@ -1,8 +1,10 @@
 // Live Arc Testnet status via JSON-RPC.
+const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+
 export const ARC_RPC_URL =
-  (import.meta.env.VITE_ARC_RPC_URL as string | undefined) ?? "https://rpc.testnet.arc.network";
+  env?.VITE_ARC_RPC_URL ?? process.env.ARC_TESTNET_RPC_URL ?? "https://rpc.testnet.arc.network";
 export const ARC_RPC_WS_URL =
-  (import.meta.env.VITE_ARC_RPC_WS_URL as string | undefined) ?? "wss://rpc.testnet.arc.network";
+  env?.VITE_ARC_RPC_WS_URL ?? process.env.ARC_TESTNET_RPC_WS_URL ?? "wss://rpc.testnet.arc.network";
 
 export const ARC_CHAIN_ID = 5042002;
 export const ARC_CHAIN_ID_HEX = "0x4cef52";

@@ -18,6 +18,7 @@ import { Route as CallsRouteImport } from './routes/calls'
 import { Route as ArenaRouteImport } from './routes/arena'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiCircleWebhookRouteImport } from './routes/api.circle-webhook'
 import { Route as AgentIdRouteImport } from './routes/agent.$id'
 
 const RegisterRoute = RegisterRouteImport.update({
@@ -65,6 +66,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCircleWebhookRoute = ApiCircleWebhookRouteImport.update({
+  id: '/api/circle-webhook',
+  path: '/api/circle-webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AgentIdRoute = AgentIdRouteImport.update({
   id: '/agent/$id',
   path: '/agent/$id',
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
+  '/api/circle-webhook': typeof ApiCircleWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
+  '/api/circle-webhook': typeof ApiCircleWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
+  '/api/circle-webhook': typeof ApiCircleWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/portfolio'
     | '/register'
     | '/agent/$id'
+    | '/api/circle-webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
     | '/portfolio'
     | '/register'
     | '/agent/$id'
+    | '/api/circle-webhook'
   id:
     | '__root__'
     | '/'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/portfolio'
     | '/register'
     | '/agent/$id'
+    | '/api/circle-webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -158,6 +170,7 @@ export interface RootRouteChildren {
   PortfolioRoute: typeof PortfolioRoute
   RegisterRoute: typeof RegisterRoute
   AgentIdRoute: typeof AgentIdRoute
+  ApiCircleWebhookRoute: typeof ApiCircleWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -225,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/circle-webhook': {
+      id: '/api/circle-webhook'
+      path: '/api/circle-webhook'
+      fullPath: '/api/circle-webhook'
+      preLoaderRoute: typeof ApiCircleWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/agent/$id': {
       id: '/agent/$id'
       path: '/agent/$id'
@@ -246,7 +266,18 @@ const rootRouteChildren: RootRouteChildren = {
   PortfolioRoute: PortfolioRoute,
   RegisterRoute: RegisterRoute,
   AgentIdRoute: AgentIdRoute,
+  ApiCircleWebhookRoute: ApiCircleWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

@@ -7,7 +7,10 @@ export function Logo({ size = 28, withText = true }: { size?: number; withText?:
         <circle cx="16" cy="16" r="1.6" fill="#F0EBF8" />
       </svg>
       {withText && (
-        <span className="font-mono font-bold tracking-[0.18em] text-foreground" style={{ fontSize: size * 0.55 }}>
+        <span
+          className="font-mono font-bold tracking-[0.18em] text-foreground"
+          style={{ fontSize: size * 0.55 }}
+        >
           SENTRA
         </span>
       )}

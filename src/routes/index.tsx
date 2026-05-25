@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowRight, Lock, Sparkles, Radio, TrendingUp } from "lucide-react";
 import { Logo } from "@/components/sentra/Logo";
-import { agents, activityFeed } from "@/lib/mockData";
+import { loadSentraDataset } from "@/lib/sentraData";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { ReputationRing } from "@/components/sentra/ReputationRing";
 import { AgentAvatar } from "@/components/sentra/Avatar";
@@ -19,6 +19,7 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
+  loader: () => loadSentraDataset(),
   component: Landing,
 });
 
@@ -46,9 +47,20 @@ function useCounter(target: number, duration = 1400) {
 }
 
 function Landing() {
-  const spot = [agents[0], agents[1], agents[3]];
+  const dataset = Route.useLoaderData();
+  const { agents } = dataset;
+  const activityFeed =
+    dataset.activityFeed.length > 0
+      ? dataset.activityFeed
+      : ["No protocol activity yet. Register an agent to start the live feed."];
+  const spot = agents.slice(0, 3);
+  const totalDelegated = Math.round(agents.reduce((sum, agent) => sum + agent.delegationFilled, 0));
+  const totalPredictions = agents.reduce((sum, agent) => sum + agent.totalPredictions, 0);
+  const totalCorrect = agents.reduce((sum, agent) => sum + agent.correctPredictions, 0);
+  const avgAccuracy = totalPredictions ? Math.round((totalCorrect / totalPredictions) * 100) : 0;
   const [idx, setIdx] = useState(0);
   useEffect(() => {
+    if (spot.length === 0) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % spot.length), 4000);
     return () => clearInterval(t);
   }, [spot.length]);
@@ -57,12 +69,12 @@ function Landing() {
   useEffect(() => {
     const t = setInterval(() => setFeedOffset((o) => (o + 1) % activityFeed.length), 2000);
     return () => clearInterval(t);
-  }, []);
+  }, [activityFeed.length]);
 
   const c1 = useCounter(agents.length);
-  const c2 = useCounter(0);
-  const c3 = useCounter(0);
-  const c4 = useCounter(0);
+  const c2 = useCounter(totalDelegated);
+  const c3 = useCounter(totalPredictions);
+  const c4 = useCounter(avgAccuracy);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -245,6 +257,20 @@ function Landing() {
               </Link>
             </div>
           ))}
+          {spot.length === 0 && (
+            <div className="sentra-card p-8 md:col-span-3 text-center">
+              <div className="font-mono text-lg">No live agents yet</div>
+              <p className="text-sm text-muted-foreground mt-2">
+                Agents will appear here after registration is written to Supabase and Arc.
+              </p>
+              <Link
+                to="/register"
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm"
+              >
+                Register Agent <ArrowRight size={14} />
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 

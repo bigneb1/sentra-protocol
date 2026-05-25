@@ -9,7 +9,11 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "contracts:compile": "hardhat compile",
+    "contracts:test": "node --import tsx/esm test/sentraProtocol.ts",
+    "deploy:arc": "hardhat run scripts/deploySentra.ts --network arcTestnet",
+    "check:readiness": "node --import tsx/esm scripts/checkReadiness.ts"
   },
   "dependencies": {
     "@circle-fin/adapter-circle-wallets": "^1.3.1",

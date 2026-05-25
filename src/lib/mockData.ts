@@ -1,9 +1,11 @@
-export type Strategy = "Macro" | "Sports" | "Contrarian" | "Yield" | "Tech";
+export type { Agent, EarningsCall, Prediction, Strategy } from "@/lib/sentraData";
 
-export interface Agent {
+export type LegacyStrategy = "Macro" | "Sports" | "Contrarian" | "Yield" | "Tech";
+
+interface LegacyAgent {
   id: string;
   name: string;
-  strategy: Strategy;
+  strategy: LegacyStrategy;
   description: string;
   metadataUri: string;
   walletAddress: string;
@@ -41,7 +43,7 @@ export interface Agent {
   pnlHistory: { day: number; value: number }[];
 }
 
-export interface Prediction {
+interface LegacyPrediction {
   id: string;
   agentId: string;
   marketId: string;
@@ -56,7 +58,7 @@ export interface Prediction {
   submittedAt: string;
 }
 
-export interface EarningsCall {
+interface LegacyEarningsCall {
   id: string;
   agentId: string;
   date: string;
@@ -69,13 +71,22 @@ export interface EarningsCall {
   subscriptionCost: number;
 }
 
-const colors = ["#7C3AED", "#0D9488", "#D97706", "#EF4444", "#10B981", "#A78BFA", "#3B82F6", "#EC4899"];
+const colors = [
+  "#7C3AED",
+  "#0D9488",
+  "#D97706",
+  "#EF4444",
+  "#10B981",
+  "#A78BFA",
+  "#3B82F6",
+  "#EC4899",
+];
 
 function pnlSeries(seed: number, drift: number): { day: number; value: number }[] {
   const out: { day: number; value: number }[] = [];
   let v = 1000;
   for (let i = 0; i < 30; i++) {
-    const r = Math.sin(seed + i * 0.7) * 0.018 + (Math.cos(seed * 1.3 + i) * 0.012) + drift / 1000;
+    const r = Math.sin(seed + i * 0.7) * 0.018 + Math.cos(seed * 1.3 + i) * 0.012 + drift / 1000;
     v = v * (1 + r);
     out.push({ day: i + 1, value: Math.round(v * 100) / 100 });
   }
@@ -83,25 +94,58 @@ function pnlSeries(seed: number, drift: number): { day: number; value: number }[
 }
 
 const agentSeeds = [
-  { name: "MacroHawk",  strategy: "Macro" as Strategy,       desc: "Top-down macro trader. Tracks Fed signals, treasury auctions, and global liquidity flows." },
-  { name: "VolArb",     strategy: "Macro" as Strategy,       desc: "Cross-market volatility arbitrage across rates, crypto, and equities." },
-  { name: "SportsFlow", strategy: "Sports" as Strategy,      desc: "Sports betting markets with injury, weather, and line-movement data." },
-  { name: "CrowdFade",  strategy: "Contrarian" as Strategy,  desc: "Fades retail sentiment extremes. High-variance contrarian book." },
-  { name: "StableYield",strategy: "Yield" as Strategy,       desc: "Capital-efficient yield strategies. Low drawdown, consistent returns." },
-  { name: "TechSignal", strategy: "Tech" as Strategy,        desc: "Pattern recognition on price action. Momentum, breakouts, mean reversion." },
-  { name: "FedWatcher", strategy: "Macro" as Strategy,       desc: "Fed-speak NLP & rate-decision prediction markets. Narrow scope." },
-  { name: "AlphaBot",   strategy: "Contrarian" as Strategy,  desc: "Multi-strategy RL ensemble. Always learning." },
+  {
+    name: "MacroHawk",
+    strategy: "Macro" as LegacyStrategy,
+    desc: "Top-down macro trader. Tracks Fed signals, treasury auctions, and global liquidity flows.",
+  },
+  {
+    name: "VolArb",
+    strategy: "Macro" as LegacyStrategy,
+    desc: "Cross-market volatility arbitrage across rates, crypto, and equities.",
+  },
+  {
+    name: "SportsFlow",
+    strategy: "Sports" as LegacyStrategy,
+    desc: "Sports betting markets with injury, weather, and line-movement data.",
+  },
+  {
+    name: "CrowdFade",
+    strategy: "Contrarian" as LegacyStrategy,
+    desc: "Fades retail sentiment extremes. High-variance contrarian book.",
+  },
+  {
+    name: "StableYield",
+    strategy: "Yield" as LegacyStrategy,
+    desc: "Capital-efficient yield strategies. Low drawdown, consistent returns.",
+  },
+  {
+    name: "TechSignal",
+    strategy: "Tech" as LegacyStrategy,
+    desc: "Pattern recognition on price action. Momentum, breakouts, mean reversion.",
+  },
+  {
+    name: "FedWatcher",
+    strategy: "Macro" as LegacyStrategy,
+    desc: "Fed-speak NLP & rate-decision prediction markets. Narrow scope.",
+  },
+  {
+    name: "AlphaBot",
+    strategy: "Contrarian" as LegacyStrategy,
+    desc: "Multi-strategy RL ensemble. Always learning.",
+  },
 ];
 
 // All performance stats start at zero. They populate as agents trade and the
 // protocol scores their predictions on-chain. delegationCap is a self-set ceiling.
-export const agents: Agent[] = agentSeeds.map((s, i) => ({
+export const agents: LegacyAgent[] = agentSeeds.map((s, i) => ({
   id: s.name.toLowerCase(),
   name: s.name,
   strategy: s.strategy,
   description: s.desc,
   metadataUri: `ipfs://sentra/${s.name.toLowerCase()}.json`,
-  walletAddress: "0x" + Array.from({ length: 40 }, (_, k) => "abcdef0123456789"[(k * 7 + i * 13) % 16]).join(""),
+  walletAddress:
+    "0x" + Array.from({ length: 40 }, (_, k) => "abcdef0123456789"[(k * 7 + i * 13) % 16]).join(""),
   circleWalletId: `wallet_${s.name.toLowerCase()}`,
   predictionSigningKeyId: `key_${s.name.toLowerCase()}`,
   stakedAmount: 1,
@@ -161,10 +205,10 @@ const questions = [
   "Will USDC supply cross $40B?",
 ];
 
-export const predictions: Prediction[] = questions.map((q, i) => {
+export const predictions: LegacyPrediction[] = questions.map((q, i) => {
   const a = agents[i % agents.length];
   const ap = 0.35 + ((i * 7) % 50) / 100;
-  const mp = ap + ((i % 2 === 0 ? -1 : 1) * (0.05 + (i % 10) / 100));
+  const mp = ap + (i % 2 === 0 ? -1 : 1) * (0.05 + (i % 10) / 100);
   const resolved = i < 12;
   return {
     id: `pred_${i + 1}`,
@@ -191,7 +235,7 @@ export const predictions: Prediction[] = questions.map((q, i) => {
 const transcriptTemplate = (name: string) =>
   `Good morning. This is the ${name} daily report. We closed the session up on the back of better-than-expected positioning into the FOMC meeting. Our largest exposure remains the front-end rates trade, where we continue to see asymmetry to the downside in yields. We added to that position twice during the session. Risk-off flows late in the day briefly pressured our equity index shorts, but we held conviction and finished green. Looking ahead, the calendar is light on data but heavy on Fed speak. We expect continued range-bound trading until clearer guidance emerges.`;
 
-export const earningsCalls: EarningsCall[] = agents.flatMap((a) =>
+export const earningsCalls: LegacyEarningsCall[] = agents.flatMap((a) =>
   Array.from({ length: 5 }, (_, i) => ({
     id: `call_${a.id}_${i + 1}`,
     agentId: a.id,

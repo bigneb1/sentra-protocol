@@ -3,20 +3,28 @@ import { useState } from "react";
 import { ChevronDown, Check, Shield, Wallet, KeyRound, Radio } from "lucide-react";
 import { useToast } from "@/lib/toast";
 import { ARC_ERC8004_REGISTRIES, ARC_GATEWAY } from "@/lib/arcTestnet";
+import {
+  createAgentWalletAction,
+  registerAgentAction,
+  registerErc8004IdentityAction,
+} from "@/lib/sentraActions";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/register")({
   head: () => ({ meta: [{ title: "Register Agent — SENTRA" }] }),
   component: Register,
 });
 
-const strategies = ["Macro", "Sports", "Tech", "Contrarian", "Yield", "Custom"];
+const strategies = ["Macro", "Sports", "Tech", "Contrarian", "Yield", "Custom"] as const;
 const colors = ["#7C3AED", "#0D9488", "#D97706"];
+type Strategy = (typeof strategies)[number];
 
 function Register() {
   const toast = useToast();
+  const { session } = useAuth();
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
-  const [strategy, setStrategy] = useState("Macro");
+  const [strategy, setStrategy] = useState<Strategy>("Macro");
   const [desc, setDesc] = useState("");
   const [colorIdx, setColorIdx] = useState(0);
   const [stake, setStake] = useState(1);
@@ -31,14 +39,71 @@ function Register() {
   const [faqOpen, setFaqOpen] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployed, setDeployed] = useState(false);
+  const [deployedSlug, setDeployedSlug] = useState<string | null>(null);
+  const [deployMessage, setDeployMessage] = useState<string>("");
 
-  const deploy = () => {
+  const authHeaders = session?.access_token
+    ? { authorization: `Bearer ${session.access_token}` }
+    : undefined;
+
+  const deploy = async () => {
+    if (!authHeaders) {
+      toast.push("Sign in before registering an agent");
+      return;
+    }
+    if (!name.trim()) {
+      toast.push("Agent name is required");
+      setStep(1);
+      return;
+    }
     setDeploying(true);
-    setTimeout(() => {
-      setDeploying(false);
+    try {
+      const registered = await registerAgentAction({
+        data: {
+          name,
+          strategy,
+          description: desc,
+          stakeUsdc: stake,
+          delegationCapUsdc: publicDel ? cap : 0,
+          minConfidenceBps: conf * 100,
+          maxActivePredictions: maxActive,
+          autoCalls,
+          publicDelegations: publicDel,
+          riskLimits: {
+            maxDailyLossUsdc: dailyLoss,
+            maxOpenPositions: maxActive,
+            maxSlippageBps: slippage,
+            maxLeverage: 1,
+          },
+        },
+        headers: authHeaders,
+      });
+      const wallet = await createAgentWalletAction({
+        data: { agentId: registered.agentId },
+        headers: authHeaders,
+      });
+
+      if (wallet.status === "ready") {
+        await registerErc8004IdentityAction({
+          data: { agentId: registered.agentId },
+          headers: authHeaders,
+        });
+      }
+
+      setDeployedSlug(registered.slug);
+      setDeployMessage(
+        wallet.status === "ready"
+          ? "Agent draft, Circle treasury, and ERC-8004 registration transaction were submitted."
+          : `Agent draft saved. Add ${wallet.missing.join(", ")} to create the Circle treasury and ERC-8004 identity.`,
+      );
       setDeployed(true);
-      toast.push(`Agent ${name || "Untitled"} deployed`);
-    }, 3000);
+      toast.push(`Agent ${name || "Untitled"} registered`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Agent registration failed";
+      toast.push(message);
+    } finally {
+      setDeploying(false);
+    }
   };
 
   return (
@@ -102,11 +167,13 @@ function Register() {
             <Field label="Strategy">
               <select
                 value={strategy}
-                onChange={(e) => setStrategy(e.target.value)}
+                onChange={(e) => setStrategy(e.target.value as Strategy)}
                 className="w-full bg-elevated px-3 py-2 rounded outline-none focus:ring-1 focus:ring-primary"
               >
                 {strategies.map((s) => (
-                  <option key={s}>{s}</option>
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -314,13 +381,11 @@ function Register() {
                   <Check size={28} />
                 </div>
                 <h3 className="font-mono text-xl">Agent live</h3>
-                <p className="text-sm text-muted-foreground mt-2">
-                  ID: <span className="font-mono">agent_{Math.floor(Math.random() * 99999)}</span>
-                </p>
+                <p className="text-sm text-muted-foreground mt-2">{deployMessage}</p>
                 <div className="mt-5 flex gap-2 justify-center">
                   <Link
                     to="/agent/$id"
-                    params={{ id: "macrohawk" }}
+                    params={{ id: deployedSlug ?? "" }}
                     className="px-4 py-2 rounded border border-primary text-primary-light hover:bg-primary/10 text-sm"
                   >
                     View Agent

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./SentraTypes.sol";
 
-contract SentraAgentRegistry {
+contract SentraAgentRegistry is Pausable {
     address public immutable usdc;
     address public owner;
     address public stakeVault;
@@ -27,6 +28,7 @@ contract SentraAgentRegistry {
     event AgentRiskUpdated(bytes32 indexed agentId, uint256 delegationCap);
     event GatewayBalanceUpdated(bytes32 indexed agentId, uint256 balance);
     event ModuleUpdated(bytes32 indexed module, address indexed moduleAddress);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "only owner");
@@ -39,8 +41,23 @@ contract SentraAgentRegistry {
     }
 
     constructor(address usdcAddress) {
+        require(usdcAddress != address(0), "usdc required");
         owner = msg.sender;
         usdc = usdcAddress;
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "owner required");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     function setStakeVault(address vault) external onlyOwner {
@@ -55,11 +72,16 @@ contract SentraAgentRegistry {
         emit ModuleUpdated("REPUTATION_ORACLE", oracle);
     }
 
-    function registerAgent(AgentRegistration calldata input) external {
+    function registerAgent(AgentRegistration calldata input) external whenNotPaused {
         require(!registered[input.agentId], "already registered");
+        require(input.agentId != bytes32(0), "agent id required");
         require(input.wallet != address(0), "wallet required");
         require(input.arcErc8004Id != 0, "erc8004 id required");
         require(appAgentByErc8004Id[input.arcErc8004Id] == bytes32(0), "erc8004 id used");
+        require(input.metadataHash != bytes32(0), "metadata hash required");
+        require(input.strategyHash != bytes32(0), "strategy hash required");
+        require(input.riskHash != bytes32(0), "risk hash required");
+        require(input.predictionKeyHash != bytes32(0), "prediction key required");
 
         registered[input.agentId] = true;
         agentOwner[input.agentId] = msg.sender;
@@ -87,7 +109,8 @@ contract SentraAgentRegistry {
         bytes32 strategyHash,
         bytes32 riskHash,
         bytes32 predictionKeyHash
-    ) external onlyAgentOwner(agentId) {
+    ) external onlyAgentOwner(agentId) whenNotPaused {
+        require(registered[agentId], "agent missing");
         AgentProfile storage agent = agentProfiles[agentId];
         agent.metadataHash = metadataHash;
         agent.strategyHash = strategyHash;
@@ -96,31 +119,32 @@ contract SentraAgentRegistry {
         emit AgentUpdated(agentId, metadataHash, strategyHash, riskHash, predictionKeyHash);
     }
 
-    function updateDelegationCap(bytes32 agentId, uint256 delegationCap) external onlyAgentOwner(agentId) {
+    function updateDelegationCap(bytes32 agentId, uint256 delegationCap) external onlyAgentOwner(agentId) whenNotPaused {
+        require(registered[agentId], "agent missing");
         agentProfiles[agentId].delegationCap = delegationCap;
         emit AgentRiskUpdated(agentId, delegationCap);
     }
 
-    function setGatewayBalance(bytes32 agentId, uint256 balance) external {
+    function setGatewayBalance(bytes32 agentId, uint256 balance) external whenNotPaused {
         require(msg.sender == owner || agentOwner[agentId] == msg.sender, "not authorized");
         require(registered[agentId], "agent missing");
         agentProfiles[agentId].gatewayBalance = balance;
         emit GatewayBalanceUpdated(agentId, balance);
     }
 
-    function setStakeBalance(bytes32 agentId, uint256 amount) external {
+    function setStakeBalance(bytes32 agentId, uint256 amount) external whenNotPaused {
         require(msg.sender == stakeVault, "only stake vault");
         require(registered[agentId], "agent missing");
         agentProfiles[agentId].usdcStake = amount;
     }
 
-    function setAgentSlashed(bytes32 agentId, bool slashed) external {
+    function setAgentSlashed(bytes32 agentId, bool slashed) external whenNotPaused {
         require(msg.sender == stakeVault || msg.sender == owner, "not authorized");
         require(registered[agentId], "agent missing");
         agentProfiles[agentId].slashed = slashed;
     }
 
-    function setReputationSnapshot(bytes32 agentId, uint32 reputation, uint32 brierScore) external {
+    function setReputationSnapshot(bytes32 agentId, uint32 reputation, uint32 brierScore) external whenNotPaused {
         require(msg.sender == reputationOracle || msg.sender == owner, "not authorized");
         require(registered[agentId], "agent missing");
         agentProfiles[agentId].reputation = reputation;

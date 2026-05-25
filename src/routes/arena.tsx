@@ -2,7 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Search, ArrowRight } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { agents, getAgentPredictions, getAgentCalls, type Strategy } from "@/lib/mockData";
+import {
+  getAgentCalls,
+  getAgentPredictions,
+  loadSentraDataset,
+  type Agent,
+  type Strategy,
+} from "@/lib/sentraData";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { ReputationRing } from "@/components/sentra/ReputationRing";
 import { BrierBadge } from "@/components/sentra/BrierBadge";
@@ -20,11 +26,11 @@ export const Route = createFileRoute("/arena")({
       },
     ],
   }),
+  loader: () => loadSentraDataset(),
   component: Arena,
 });
 
 type SortKey = "brier" | "sharpe" | "pnl7" | "pnl30" | "delegated" | "newest";
-type AgentRow = (typeof agents)[number];
 const sortOptions: { key: SortKey; label: string }[] = [
   { key: "brier", label: "Brier Score" },
   { key: "sharpe", label: "Sharpe Ratio" },
@@ -43,6 +49,8 @@ const stratFilters: ("All" | Strategy)[] = [
 ];
 
 function Arena() {
+  const dataset = Route.useLoaderData();
+  const { agents } = dataset;
   const ready = useDelay(1200);
   const [sort, setSort] = useState<SortKey>("brier");
   const [strat, setStrat] = useState<"All" | Strategy>("All");
@@ -54,7 +62,7 @@ function Arena() {
       (a) =>
         (strat === "All" || a.strategy === strat) && a.name.toLowerCase().includes(q.toLowerCase()),
     );
-    const cmp: Record<SortKey, (a: AgentRow, b: AgentRow) => number> = {
+    const cmp: Record<SortKey, (a: Agent, b: Agent) => number> = {
       brier: (a, b) => a.brierScore - b.brierScore,
       sharpe: (a, b) => b.sharpeRatio - a.sharpeRatio,
       pnl7: (a, b) => b.pnl7d - a.pnl7d,
@@ -63,18 +71,12 @@ function Arena() {
       newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
     };
     return [...r].sort(cmp[sort]);
-  }, [sort, strat, q]);
+  }, [agents, sort, strat, q]);
 
   const totalDelegated = agents.reduce((s, a) => s + a.delegationFilled, 0);
   const totalPreds = agents.reduce((s, a) => s + a.totalPredictions, 0);
-  const avgAcc = Math.round(
-    (agents.reduce(
-      (s, a) => s + (a.totalPredictions > 0 ? a.correctPredictions / a.totalPredictions : 0),
-      0,
-    ) /
-      agents.length) *
-      100,
-  );
+  const totalCorrect = agents.reduce((s, a) => s + a.correctPredictions, 0);
+  const avgAcc = totalPreds ? Math.round((totalCorrect / totalPreds) * 100) : 0;
 
   return (
     <div className="px-6 md:px-10 py-8 max-w-[1400px] mx-auto">
@@ -156,8 +158,8 @@ function Arena() {
             const cap =
               a.delegationCap > 0 ? Math.round((a.delegationFilled / a.delegationCap) * 100) : 0;
             const open = expanded === a.id;
-            const preds = getAgentPredictions(a.id).slice(0, 3);
-            const call = getAgentCalls(a.id)[0];
+            const preds = getAgentPredictions(dataset, a.id).slice(0, 3);
+            const call = getAgentCalls(dataset, a.id)[0];
             return (
               <div key={a.id} className="border-b border-border last:border-0">
                 <div
@@ -272,6 +274,20 @@ function Arena() {
               </div>
             );
           })}
+          {rows.length === 0 && (
+            <div className="p-10 text-center">
+              <div className="font-mono text-sm text-foreground">No registered agents yet</div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Agents will appear here after they are created in Supabase and registered on Arc.
+              </p>
+              <Link
+                to="/register"
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm"
+              >
+                Register Agent <ArrowRight size={14} />
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>

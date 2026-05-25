@@ -11,7 +11,14 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { getAgent, getAgentPredictions, getAgentCalls, agents } from "@/lib/mockData";
+import {
+  getAgent,
+  getAgentCalls,
+  getAgentPredictions,
+  loadSentraDataset,
+  type SentraDataset,
+} from "@/lib/sentraData";
+import { createDelegationIntentAction } from "@/lib/sentraActions";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { ReputationRing } from "@/components/sentra/ReputationRing";
 import { AgentAvatar } from "@/components/sentra/Avatar";
@@ -19,12 +26,14 @@ import { BrierBadge } from "@/components/sentra/BrierBadge";
 import { Waveform } from "@/components/sentra/Waveform";
 import { useToast } from "@/lib/toast";
 import { useWallet } from "@/lib/wallet";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/agent/$id")({
-  loader: ({ params }) => {
-    const a = getAgent(params.id);
+  loader: async ({ params }) => {
+    const dataset = await loadSentraDataset();
+    const a = getAgent(dataset, params.id);
     if (!a) throw notFound();
-    return { agentName: a.name };
+    return { agentName: a.name, dataset };
   },
   head: ({ loaderData }) => ({
     meta: [{ title: `${loaderData?.agentName ?? "Agent"} — SENTRA` }],
@@ -34,11 +43,13 @@ export const Route = createFileRoute("/agent/$id")({
 
 function AgentPage() {
   const { id } = Route.useParams();
-  const agent = getAgent(id)!;
-  const preds = getAgentPredictions(id);
-  const calls = getAgentCalls(id);
+  const { dataset } = Route.useLoaderData() as { agentName: string; dataset: SentraDataset };
+  const agent = getAgent(dataset, id)!;
+  const preds = getAgentPredictions(dataset, id);
+  const calls = getAgentCalls(dataset, id);
   const toast = useToast();
   const wallet = useWallet();
+  const { session } = useAuth();
 
   const [tab, setTab] = useState<"overview" | "predictions" | "history" | "calls">("overview");
   const [range, setRange] = useState<"30" | "90" | "all">("30");
@@ -79,14 +90,39 @@ function AgentPage() {
     { name: "Wrong", value: agent.totalPredictions - agent.correctPredictions, color: "#EF4444" },
   ];
 
-  const similar = agents
+  const similar = dataset.agents
     .filter((a) => a.strategy === agent.strategy && a.id !== agent.id)
     .slice(0, 2);
   const capLeft = Math.max(0, agent.delegationCap - agent.delegationFilled);
   const delegateMax = Math.max(1, Math.min(500, capLeft));
+  const authHeaders = session?.access_token
+    ? { authorization: `Bearer ${session.access_token}` }
+    : undefined;
 
-  const delegate = () => {
-    toast.push(`Delegated ${delegateAmt} USDC to ${agent.name}`);
+  const delegate = async () => {
+    if (!wallet.connected) {
+      wallet.connect();
+      return;
+    }
+    if (!authHeaders) {
+      toast.push("Sign in before creating a delegation intent");
+      return;
+    }
+    try {
+      const amountUsdc = Math.min(delegateAmt, delegateMax);
+      await createDelegationIntentAction({
+        data: {
+          agentId: agent.databaseId,
+          amountUsdc,
+          delegatorAddress: wallet.address ?? undefined,
+        },
+        headers: authHeaders,
+      });
+      toast.push(`Delegation intent queued for ${amountUsdc} USDC to ${agent.name}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Delegation intent failed";
+      toast.push(message);
+    }
   };
 
   return (
@@ -290,6 +326,11 @@ function AgentPage() {
                   </span>
                 </div>
               ))}
+            {preds.filter((p) => p.status === "resolved").length === 0 && (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                No resolved prediction history yet.
+              </div>
+            )}
           </div>
         )}
 
@@ -318,6 +359,11 @@ function AgentPage() {
                 </div>
               </div>
             ))}
+            {calls.length === 0 && (
+              <div className="sentra-card p-8 text-center text-sm text-muted-foreground">
+                No earnings calls have been published yet.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -367,10 +413,14 @@ function AgentPage() {
           </div>
           <button
             onClick={delegate}
-            disabled={!wallet.connected}
+            disabled={capLeft <= 0}
             className="w-full mt-4 px-4 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed transition text-sm font-medium"
           >
-            {wallet.connected ? "Delegate" : "Connect Wallet to Delegate"}
+            {capLeft <= 0
+              ? "Cap Full"
+              : wallet.connected
+                ? "Delegate"
+                : "Connect Wallet to Delegate"}
           </button>
           <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
             24h lock period. Returns are not guaranteed. Stake may be slashed if reputation falls
@@ -383,10 +433,16 @@ function AgentPage() {
             LATEST CALL
           </h3>
           <div className="text-xs text-muted-foreground mb-2">{calls[0]?.date}</div>
-          <Waveform bars={36} height={32} />
-          <button className="w-full mt-3 px-3 py-2 rounded-md border border-primary text-primary-light hover:bg-primary/10 text-xs inline-flex items-center justify-center gap-2">
-            <Lock size={12} /> Unlock — 0.01 USDC
-          </button>
+          {calls[0] ? (
+            <>
+              <Waveform bars={36} height={32} />
+              <button className="w-full mt-3 px-3 py-2 rounded-md border border-primary text-primary-light hover:bg-primary/10 text-xs inline-flex items-center justify-center gap-2">
+                <Lock size={12} /> Unlock — {calls[0].subscriptionCost.toFixed(2)} USDC
+              </button>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">No call available.</p>
+          )}
         </div>
 
         <div>
@@ -411,6 +467,11 @@ function AgentPage() {
                 <ArrowRight size={14} className="text-muted-foreground" />
               </Link>
             ))}
+            {similar.length === 0 && (
+              <div className="text-xs text-muted-foreground">
+                No peer agents in this strategy yet.
+              </div>
+            )}
           </div>
         </div>
       </div>

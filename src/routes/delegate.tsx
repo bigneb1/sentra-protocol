@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Wallet, ArrowRight, Check, Layers } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
-import { agents } from "@/lib/mockData";
+import { loadSentraDataset } from "@/lib/sentraData";
+import { createDelegationIntentAction, createWithdrawalIntentAction } from "@/lib/sentraActions";
 import { useWallet } from "@/lib/wallet";
 import { useToast } from "@/lib/toast";
+import { useAuth } from "@/lib/auth";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 
@@ -18,29 +20,32 @@ export const Route = createFileRoute("/delegate")({
       },
     ],
   }),
+  loader: () => loadSentraDataset(),
   component: Delegate,
 });
 
-const mockAllocs = [
-  { agentId: "macrohawk", amount: 150, current: 168.4, ret: 12.3 },
-  { agentId: "fedwatcher", amount: 100, current: 108.7, ret: 8.7 },
-  { agentId: "stableyield", amount: 80, current: 82.1, ret: 2.6 },
-];
-
 function Delegate() {
-  const { connected, connect } = useWallet();
+  const dataset = Route.useLoaderData();
+  const { agents, delegations } = dataset;
+  const { connected, connect, balance } = useWallet();
+  const { session } = useAuth();
   const toast = useToast();
 
   const [step, setStep] = useState(1);
   const [amount, setAmount] = useState(50);
-  const [agentId, setAgentId] = useState("macrohawk");
+  const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [confetti, setConfetti] = useState(false);
 
-  const selected = agents.find((a) => a.id === agentId)!;
-  const estReturn = (amount * selected.sharpeRatio * 0.08).toFixed(2);
-  const allocBreakdown = mockAllocs.map((al) => {
-    const a = agents.find((x) => x.id === al.agentId)!;
-    return { ...al, name: a.name, color: a.color };
+  const selected = agents.find((a) => a.id === agentId) ?? agents[0];
+  const estReturn = selected ? (amount * selected.sharpeRatio * 0.08).toFixed(2) : "0.00";
+  const allocBreakdown = delegations.map((al) => {
+    const a = agents.find((x) => x.id === al.agentId);
+    return {
+      ...al,
+      name: a?.name ?? "Unknown agent",
+      color: a?.color ?? "#7C3AED",
+      ret: al.amount ? ((al.current - al.amount) / al.amount) * 100 : 0,
+    };
   });
 
   if (!connected) {
@@ -67,14 +72,53 @@ function Delegate() {
 
   const next = () => setStep((s) => Math.min(4, s + 1));
   const back = () => setStep((s) => Math.max(1, s - 1));
-  const finish = () => {
+  const authHeaders = session?.access_token
+    ? { authorization: `Bearer ${session.access_token}` }
+    : undefined;
+
+  const finish = async () => {
+    if (!selected) return;
+    if (!authHeaders) {
+      toast.push("Sign in before creating a delegation intent");
+      return;
+    }
     setConfetti(true);
-    toast.push(`Delegated ${amount} USDC to ${selected.name}`);
-    setTimeout(() => setConfetti(false), 2800);
-    next();
+    try {
+      await createDelegationIntentAction({
+        data: {
+          agentId: selected.databaseId,
+          amountUsdc: amount,
+        },
+        headers: authHeaders,
+      });
+      toast.push(`Delegation intent queued for ${amount} USDC to ${selected.name}`);
+      next();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Delegation intent failed";
+      toast.push(message);
+    } finally {
+      setTimeout(() => setConfetti(false), 2800);
+    }
+  };
+
+  const requestWithdrawal = async (delegationId: string, agentName: string, amountUsdc: number) => {
+    if (!authHeaders) {
+      toast.push("Sign in before creating a withdrawal intent");
+      return;
+    }
+    try {
+      await createWithdrawalIntentAction({
+        data: { delegationId, amountUsdc },
+        headers: authHeaders,
+      });
+      toast.push(`Withdrawal intent queued for ${agentName}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Withdrawal intent failed";
+      toast.push(message);
+    }
   };
   const applyBasket = (basket: string, ids: string[]) => {
-    setAgentId(ids[0]);
+    setAgentId(ids[0] ?? agents[0]?.id ?? "");
     setAmount(120);
     setStep(3);
     toast.push(`Loaded basket: ${basket}`);
@@ -150,27 +194,35 @@ function Delegate() {
                   STEP 2 · AGENT
                 </div>
                 <h3 className="font-mono text-xl mb-4">Pick your agent</h3>
-                <select
-                  value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
-                  className="w-full bg-elevated px-3 py-2.5 rounded outline-none focus:ring-1 focus:ring-primary"
-                >
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} · {a.strategy} · Brier {a.brierScore.toFixed(2)} · Cap $
-                      {(a.delegationCap - a.delegationFilled).toLocaleString()}
-                    </option>
-                  ))}
-                </select>
-                <div className="mt-5 sentra-card !shadow-none p-4 flex items-center gap-3">
-                  <AgentAvatar name={selected.name} color={selected.color} size={36} />
-                  <div>
-                    <div className="font-mono">{selected.name}</div>
-                    <div className="mt-1">
-                      <StrategyChip strategy={selected.strategy} size="xs" />
+                {agents.length > 0 ? (
+                  <>
+                    <select
+                      value={agentId}
+                      onChange={(e) => setAgentId(e.target.value)}
+                      className="w-full bg-elevated px-3 py-2.5 rounded outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      {agents.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} · {a.strategy} · Brier {a.brierScore.toFixed(2)} · Cap $
+                          {(a.delegationCap - a.delegationFilled).toLocaleString()}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="mt-5 sentra-card !shadow-none p-4 flex items-center gap-3">
+                      <AgentAvatar name={selected.name} color={selected.color} size={36} />
+                      <div>
+                        <div className="font-mono">{selected.name}</div>
+                        <div className="mt-1">
+                          <StrategyChip strategy={selected.strategy} size="xs" />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No agents are open for delegation yet.
+                  </p>
+                )}
               </div>
             )}
             {step === 3 && (
@@ -180,7 +232,7 @@ function Delegate() {
                 </div>
                 <h3 className="font-mono text-xl mb-4">Review allocation</h3>
                 <dl className="space-y-3 text-sm">
-                  <Row k="Agent" v={selected.name} />
+                  <Row k="Agent" v={selected?.name ?? "No agent selected"} />
                   <Row k="Amount" v={`${amount} USDC`} />
                   <Row
                     k="Expected return (1y)"
@@ -227,6 +279,7 @@ function Delegate() {
                 ) : (
                   <button
                     onClick={finish}
+                    disabled={!selected}
                     className="px-5 py-2 rounded bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm"
                   >
                     Confirm Delegation
@@ -241,17 +294,29 @@ function Delegate() {
             {[
               {
                 name: "Top 3 Brier",
-                ids: ["macrohawk", "fedwatcher", "stableyield"],
+                ids: [...agents]
+                  .sort((a, b) => a.brierScore - b.brierScore)
+                  .slice(0, 3)
+                  .map((a) => a.id),
                 desc: "Lowest 3 Brier scores. Conservative.",
               },
               {
                 name: "Max Diversification",
-                ids: ["macrohawk", "sportsflow", "stableyield"],
+                ids: agents
+                  .filter(
+                    (agent, index, list) =>
+                      list.findIndex((a) => a.strategy === agent.strategy) === index,
+                  )
+                  .slice(0, 3)
+                  .map((a) => a.id),
                 desc: "Mixed strategies. Balanced risk.",
               },
               {
                 name: "High Risk/Reward",
-                ids: ["crowdfade", "alphabot", "techsignal"],
+                ids: [...agents]
+                  .sort((a, b) => b.delegationCap - a.delegationCap)
+                  .slice(0, 3)
+                  .map((a) => a.id),
                 desc: "Volatile contrarian + tech. High variance.",
               },
             ].map((b) => (
@@ -261,7 +326,8 @@ function Delegate() {
                 <p className="text-xs text-muted-foreground mt-1">{b.desc}</p>
                 <div className="mt-3 flex gap-1">
                   {b.ids.map((id) => {
-                    const a = agents.find((x) => x.id === id)!;
+                    const a = agents.find((x) => x.id === id);
+                    if (!a) return null;
                     return <AgentAvatar key={id} name={a.name} color={a.color} size={26} />;
                   })}
                 </div>
@@ -280,7 +346,7 @@ function Delegate() {
         <div className="space-y-5">
           <div className="sentra-card p-5">
             <div className="text-xs text-muted-foreground">Available USDC</div>
-            <div className="font-mono text-3xl mt-1">$500.00</div>
+            <div className="font-mono text-3xl mt-1">${balance.toFixed(2)}</div>
             <div className="text-[11px] text-muted-foreground mt-1">via Circle on Arc</div>
           </div>
           <div className="sentra-card p-5">
@@ -312,13 +378,18 @@ function Delegate() {
                   <span className="font-mono">${al.current.toFixed(0)}</span>
                   <span className="font-mono text-[#10B981]">+{al.ret.toFixed(1)}%</span>
                   <button
-                    onClick={() => toast.push(`Withdrew from ${al.name}`)}
+                    onClick={() => requestWithdrawal(al.id, al.name, al.current)}
                     className="text-muted-foreground hover:text-foreground"
                   >
                     ×
                   </button>
                 </div>
               ))}
+              {allocBreakdown.length === 0 && (
+                <div className="text-xs text-muted-foreground text-center py-4">
+                  No active delegations yet.
+                </div>
+              )}
             </div>
           </div>
         </div>

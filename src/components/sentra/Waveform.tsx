@@ -1,4 +1,14 @@
-export function Waveform({ playing = false, blurred = false, bars = 48, height = 36 }: { playing?: boolean; blurred?: boolean; bars?: number; height?: number }) {
+export function Waveform({
+  playing = false,
+  blurred = false,
+  bars = 48,
+  height = 36,
+}: {
+  playing?: boolean;
+  blurred?: boolean;
+  bars?: number;
+  height?: number;
+}) {
   return (
     <svg
       viewBox={`0 0 ${bars * 4} ${height}`}

@@ -70,7 +70,8 @@ export type SentraRegistryConfig = {
   callAccess: string;
 };
 
-const envAddress = (key: string) => import.meta.env[key] ?? "";
+const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+const envAddress = (key: string) => viteEnv?.[key] ?? process.env[key] ?? "";
 
 export const SENTRA_PROTOCOL_CONTRACTS: SentraRegistryConfig = {
   agentRegistry: envAddress("VITE_SENTRA_AGENT_REGISTRY_ADDRESS"),

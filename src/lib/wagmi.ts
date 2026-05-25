@@ -31,9 +31,8 @@ export const arcTestnet: Chain = {
 // Arc uses USDC as gas. This address exposes the ERC-20 interface for USDC.
 export const USDC_ADDRESS = ARC_USDC_ADDRESS;
 
-const projectId =
-  (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined) ??
-  "2f5a2b1eafc4e3d6c7b89a0f1e3d4c5b"; // public dev key, replace via env
+const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+const projectId = viteEnv?.VITE_WALLETCONNECT_PROJECT_ID ?? "2f5a2b1eafc4e3d6c7b89a0f1e3d4c5b"; // public dev key, replace via env
 
 export const wagmiConfig = getDefaultConfig({
   appName: "SENTRA",
