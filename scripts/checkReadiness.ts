@@ -26,8 +26,8 @@ const requiredEnv = [
   "SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "CIRCLE_API_KEY",
-  "ARC_TESTNET_DEPLOYER_PRIVATE_KEY",
 ] as const;
+const deployOnlyEnv = ["ARC_TESTNET_DEPLOYER_PRIVATE_KEY"] as const;
 
 const requiredContracts = {
   VITE_SENTRA_AGENT_REGISTRY_ADDRESS: SENTRA_PROTOCOL_CONTRACTS.agentRegistry,
@@ -44,6 +44,7 @@ const missingEnv = [
   !(process.env.ENTITY_SECRET ?? process.env.CIRCLE_ENTITY_SECRET) &&
     "ENTITY_SECRET or CIRCLE_ENTITY_SECRET",
 ].filter(Boolean) as string[];
+const missingDeployOnlyEnv = deployOnlyEnv.filter((key) => !process.env[key]);
 const missingContracts = Object.entries(requiredContracts).filter(
   ([, value]) => !value || !isAddress(value),
 );
@@ -57,6 +58,10 @@ console.log(`ERC-8004 ValidationRegistry: ${ARC_ERC8004_REGISTRIES.validation}`)
 
 if (missingEnv.length > 0) {
   console.log(`Missing env: ${missingEnv.join(", ")}`);
+}
+
+if (missingDeployOnlyEnv.length > 0) {
+  console.log(`Deploy-only env not set: ${missingDeployOnlyEnv.join(", ")}`);
 }
 
 if (missingContracts.length > 0) {

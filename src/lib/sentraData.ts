@@ -314,64 +314,89 @@ function mapCall(call: Tables<"earnings_calls">): EarningsCall {
   };
 }
 
+function emptyDataset(): SentraDataset {
+  return {
+    agents: [],
+    predictions: [],
+    earningsCalls: [],
+    delegations: [],
+    vaultTransactions: [],
+    activityFeed: [],
+  };
+}
+
+function isHasRolePermissionError(error: { message?: string } | null | undefined) {
+  return error?.message?.toLowerCase().includes("permission denied for function has_role") ?? false;
+}
+
+function optionalRows<T>(
+  table: string,
+  result: { data: T[] | null; error: { message?: string } | null },
+): T[] {
+  if (result.error) {
+    console.warn(`SENTRA optional Supabase read skipped for ${table}: ${result.error.message}`);
+    return [];
+  }
+  return result.data ?? [];
+}
+
 export async function loadSentraDataset(userId?: string | null): Promise<SentraDataset> {
   const resolvedUserId = await resolveCurrentUserId(userId);
-  const [
-    agentsResult,
-    configsResult,
-    walletsResult,
-    predictionsResult,
-    outcomesResult,
-    callsResult,
-    allDelegationsResult,
-    delegationsResult,
-    txResult,
-    reputationResult,
-  ] = await Promise.all([
-    supabase.from("agents").select("*").order("created_at", { ascending: false }),
-    supabase.from("agent_configs").select("*").order("created_at", { ascending: false }),
-    supabase.from("agent_wallets").select("*").order("created_at", { ascending: false }),
-    supabase.from("predictions").select("*").order("submitted_at", { ascending: false }),
-    supabase.from("prediction_outcomes").select("*").order("resolved_at", { ascending: false }),
-    supabase.from("earnings_calls").select("*").order("created_at", { ascending: false }),
-    supabase.from("delegations").select("*").order("created_at", { ascending: false }),
-    resolvedUserId
-      ? supabase
+  const [agentsResult, predictionsResult, outcomesResult, callsResult, txResult, reputationResult] =
+    await Promise.all([
+      supabase.from("agents").select("*").order("created_at", { ascending: false }),
+      supabase.from("predictions").select("*").order("submitted_at", { ascending: false }),
+      supabase.from("prediction_outcomes").select("*").order("resolved_at", { ascending: false }),
+      supabase.from("earnings_calls").select("*").order("created_at", { ascending: false }),
+      resolvedUserId
+        ? supabase.from("vault_transactions").select("*").order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+      supabase
+        .from("reputation_events")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(16),
+    ]);
+
+  const firstError = agentsResult.error ?? predictionsResult.error ?? callsResult.error;
+
+  if (firstError) {
+    if (isHasRolePermissionError(firstError)) {
+      console.warn(`SENTRA Supabase policy read failed: ${firstError.message}`);
+      return emptyDataset();
+    }
+    throw firstError;
+  }
+
+  let configRows: Tables<"agent_configs">[] = [];
+  let walletRows: Tables<"agent_wallets">[] = [];
+  let allDelegationRows: Tables<"delegations">[] = [];
+  let delegationRows: Tables<"delegations">[] = [];
+
+  if (resolvedUserId) {
+    const [configsResult, walletsResult, allDelegationsResult, delegationsResult] =
+      await Promise.all([
+        supabase.from("agent_configs").select("*").order("created_at", { ascending: false }),
+        supabase.from("agent_wallets").select("*").order("created_at", { ascending: false }),
+        supabase.from("delegations").select("*").order("created_at", { ascending: false }),
+        supabase
           .from("delegations")
           .select("*")
           .eq("delegator_id", resolvedUserId)
-          .order("created_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
-    resolvedUserId
-      ? supabase.from("vault_transactions").select("*").order("created_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
-    supabase
-      .from("reputation_events")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(16),
-  ]);
+          .order("created_at", { ascending: false }),
+      ]);
 
-  const firstError =
-    agentsResult.error ??
-    configsResult.error ??
-    walletsResult.error ??
-    predictionsResult.error ??
-    outcomesResult.error ??
-    callsResult.error ??
-    allDelegationsResult.error ??
-    delegationsResult.error ??
-    txResult.error ??
-    reputationResult.error;
-
-  if (firstError) throw firstError;
+    configRows = optionalRows("agent_configs", configsResult);
+    walletRows = optionalRows("agent_wallets", walletsResult);
+    allDelegationRows = optionalRows("delegations", allDelegationsResult);
+    delegationRows = optionalRows("delegations", delegationsResult);
+  }
 
   const agentRows = agentsResult.data ?? [];
   const predictionRows = predictionsResult.data ?? [];
-  const outcomeRows = outcomesResult.data ?? [];
-  const configRows = configsResult.data ?? [];
-  const walletRows = walletsResult.data ?? [];
-  const allDelegationRows = allDelegationsResult.data ?? [];
+  const outcomeRows = optionalRows("prediction_outcomes", outcomesResult);
+  const vaultTransactionRows = optionalRows("vault_transactions", txResult);
+  const reputationRows = optionalRows("reputation_events", reputationResult);
   const fallbackDelegated = new Map<string, number>();
   allDelegationRows.forEach((delegation) => {
     if (delegation.status === "withdrawn") return;
@@ -407,7 +432,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
     ...mapCall(call),
     agentId: byUuid.get(call.agent_id) ?? call.agent_id,
   }));
-  const delegations = (delegationsResult.data ?? []).map((delegation) => ({
+  const delegations = delegationRows.map((delegation) => ({
     id: delegation.id,
     agentId: byUuid.get(delegation.agent_id) ?? delegation.agent_id,
     amount: num(delegation.amount_usdc),
@@ -418,7 +443,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
     entryTxHash: delegation.tx_hash,
     exitTxHash: null,
   }));
-  const vaultTransactions = (txResult.data ?? []).map((tx) => ({
+  const vaultTransactions = vaultTransactionRows.map((tx) => ({
     id: tx.id,
     hash: tx.tx_hash,
     kind: tx.kind,
@@ -427,7 +452,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
     status: tx.tx_hash ? "confirmed" : "created",
   }));
   const activityFeed =
-    reputationResult.data?.map(
+    reputationRows.map(
       (event) =>
         `${byUuid.get(event.agent_id) ?? "Agent"} ${event.reason ?? "reputation update"} · reputation ${event.new_score}`,
     ) ?? [];

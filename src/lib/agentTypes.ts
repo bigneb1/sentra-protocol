@@ -71,16 +71,49 @@ export type SentraRegistryConfig = {
 };
 
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-const envAddress = (key: string) => viteEnv?.[key] ?? process.env[key] ?? "";
+
+export const SENTRA_ARC_TESTNET_DEPLOYMENT: SentraRegistryConfig = {
+  agentRegistry: "0x8fd4253571148268295044fbb4596145bec27d13",
+  stakeVault: "0xf4e7b457d4b6810c65e5d606f952a6766ff0fceb",
+  delegationVault: "0x060764b8c367ba5d4b42b27396f3f816f943982f",
+  predictionRegistry: "0x25f801c280c8503cd0522ec80ba227ebbdab39bb",
+  reputationOracle: "0x6c395664a45c2ac8ad58562595a97b753444fae8",
+  slashingModule: "0xd0e7ed978c3f14224dc9aa42ea7ceddae4b44dd3",
+  callAccess: "0x7a4350c31d417cc7fb6c3613a8990f847c8dc06a",
+};
+
+const envAddress = (key: string, fallback: string) =>
+  viteEnv?.[key] ?? process.env[key] ?? fallback;
 
 export const SENTRA_PROTOCOL_CONTRACTS: SentraRegistryConfig = {
-  agentRegistry: envAddress("VITE_SENTRA_AGENT_REGISTRY_ADDRESS"),
-  stakeVault: envAddress("VITE_SENTRA_STAKE_VAULT_ADDRESS"),
-  delegationVault: envAddress("VITE_SENTRA_DELEGATION_VAULT_ADDRESS"),
-  predictionRegistry: envAddress("VITE_SENTRA_PREDICTION_REGISTRY_ADDRESS"),
-  reputationOracle: envAddress("VITE_SENTRA_REPUTATION_ORACLE_ADDRESS"),
-  slashingModule: envAddress("VITE_SENTRA_SLASHING_MODULE_ADDRESS"),
-  callAccess: envAddress("VITE_SENTRA_CALL_ACCESS_ADDRESS"),
+  agentRegistry: envAddress(
+    "VITE_SENTRA_AGENT_REGISTRY_ADDRESS",
+    SENTRA_ARC_TESTNET_DEPLOYMENT.agentRegistry,
+  ),
+  stakeVault: envAddress(
+    "VITE_SENTRA_STAKE_VAULT_ADDRESS",
+    SENTRA_ARC_TESTNET_DEPLOYMENT.stakeVault,
+  ),
+  delegationVault: envAddress(
+    "VITE_SENTRA_DELEGATION_VAULT_ADDRESS",
+    SENTRA_ARC_TESTNET_DEPLOYMENT.delegationVault,
+  ),
+  predictionRegistry: envAddress(
+    "VITE_SENTRA_PREDICTION_REGISTRY_ADDRESS",
+    SENTRA_ARC_TESTNET_DEPLOYMENT.predictionRegistry,
+  ),
+  reputationOracle: envAddress(
+    "VITE_SENTRA_REPUTATION_ORACLE_ADDRESS",
+    SENTRA_ARC_TESTNET_DEPLOYMENT.reputationOracle,
+  ),
+  slashingModule: envAddress(
+    "VITE_SENTRA_SLASHING_MODULE_ADDRESS",
+    SENTRA_ARC_TESTNET_DEPLOYMENT.slashingModule,
+  ),
+  callAccess: envAddress(
+    "VITE_SENTRA_CALL_ACCESS_ADDRESS",
+    SENTRA_ARC_TESTNET_DEPLOYMENT.callAccess,
+  ),
 };
 
 export const REQUIRED_AGENT_SETUP = [

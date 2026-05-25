@@ -118,7 +118,7 @@ Required for a live product runtime:
 | `VITE_SUPABASE_PUBLISHABLE_KEY`           | client        | Browser Supabase auth/client                     |
 | `VITE_ARC_RPC_URL`                        | client        | Arc RPC override                                 |
 | `ARC_TESTNET_RPC_URL`                     | server        | Hardhat/readiness RPC                            |
-| `ARC_TESTNET_DEPLOYER_PRIVATE_KEY`        | server only   | Contract deployment key                          |
+| `ARC_TESTNET_DEPLOYER_PRIVATE_KEY`        | deploy only   | Contract deployment key                          |
 | `CIRCLE_API_KEY`                          | server only   | Circle Wallets/Contracts APIs                    |
 | `ENTITY_SECRET` or `CIRCLE_ENTITY_SECRET` | server only   | Circle developer-controlled wallet entity secret |
 | `CIRCLE_AGENT_WALLET_SET_ID`              | server only   | Optional existing wallet set                     |
@@ -206,6 +206,20 @@ ARC_TESTNET_DEPLOYER_PRIVATE_KEY=<redacted> npm run deploy:arc
 ```
 
 After deployment, set the emitted `VITE_SENTRA_*_ADDRESS` values in Vercel/Lovable env.
+
+Current Arc Testnet deployment:
+
+| Contract                   | Address                                      |
+| -------------------------- | -------------------------------------------- |
+| `SentraAgentRegistry`      | `0x8fd4253571148268295044fbb4596145bec27d13` |
+| `SentraStakeVault`         | `0xf4e7b457d4b6810c65e5d606f952a6766ff0fceb` |
+| `SentraDelegationVault`    | `0x060764b8c367ba5d4b42b27396f3f816f943982f` |
+| `SentraPredictionRegistry` | `0x25f801c280c8503cd0522ec80ba227ebbdab39bb` |
+| `SentraReputationOracle`   | `0x6c395664a45c2ac8ad58562595a97b753444fae8` |
+| `SentraSlashingModule`     | `0xd0e7ed978c3f14224dc9aa42ea7ceddae4b44dd3` |
+| `SentraCallAccess`         | `0x7a4350c31d417cc7fb6c3613a8990f847c8dc06a` |
+
+The non-secret deployment manifest is tracked at `deployments/arc-testnet.json`.
 
 ## Supabase Schema
 
