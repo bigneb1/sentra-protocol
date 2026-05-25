@@ -80,6 +80,8 @@ export interface EarningsCall {
   summary: string;
   audioUrl: string | null;
   isFreePreview: boolean;
+  fullContentAvailable: boolean;
+  locked: boolean;
 }
 
 export interface DelegationPosition {
@@ -290,8 +292,14 @@ function mapPrediction(
   };
 }
 
-function mapCall(call: Tables<"earnings_calls">): EarningsCall {
-  const paidPriceUsdc = call.is_free_preview ? 0 : 0.01;
+function callPrice(price: string | number | null | undefined, isFreePreview: boolean) {
+  if (isFreePreview) return 0;
+  const parsed = num(price);
+  return parsed > 0 ? parsed : 0.01;
+}
+
+function mapFullCall(call: Tables<"earnings_calls">): EarningsCall {
+  const subscriptionCost = callPrice(call.price_usdc, call.is_free_preview);
   return {
     id: call.id,
     agentId: call.agent_id,
@@ -302,11 +310,40 @@ function mapCall(call: Tables<"earnings_calls">): EarningsCall {
     biggestWin: call.biggest_win ?? "",
     biggestLoss: call.biggest_loss ?? "",
     tomorrowThesis: call.tomorrow_thesis ?? "",
-    subscriptionCost: paidPriceUsdc,
+    subscriptionCost,
     title: `Earnings Call ${asDay(call.call_date)}`,
     summary: call.pnl_summary ?? "",
     audioUrl: call.audio_url,
     isFreePreview: call.is_free_preview,
+    fullContentAvailable: true,
+    locked: false,
+  };
+}
+
+function mapPreviewCall(
+  preview: Tables<"earnings_call_previews">,
+  fullCall?: Tables<"earnings_calls">,
+): EarningsCall {
+  if (fullCall) return mapFullCall(fullCall);
+  const subscriptionCost = callPrice(preview.price_usdc, preview.is_free_preview);
+  const locked = !preview.is_free_preview && subscriptionCost > 0;
+  return {
+    id: preview.call_id,
+    agentId: preview.agent_id,
+    date: preview.call_date,
+    durationSeconds: preview.duration_seconds ?? 0,
+    transcript: preview.preview_text,
+    pnlSummary: locked ? "Unlock required" : preview.preview_text,
+    biggestWin: "",
+    biggestLoss: "",
+    tomorrowThesis: "",
+    subscriptionCost,
+    title: `Earnings Call ${asDay(preview.call_date)}`,
+    summary: preview.preview_text,
+    audioUrl: null,
+    isFreePreview: preview.is_free_preview,
+    fullContentAvailable: false,
+    locked,
   };
 }
 
@@ -349,6 +386,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
       agentsResult,
       predictionsResult,
       outcomesResult,
+      callPreviewsResult,
       callsResult,
       txResult,
       reputationResult,
@@ -356,6 +394,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
       supabase.from("agents").select("*").order("created_at", { ascending: false }),
       supabase.from("predictions").select("*").order("submitted_at", { ascending: false }),
       supabase.from("prediction_outcomes").select("*").order("resolved_at", { ascending: false }),
+      supabase.from("earnings_call_previews").select("*").order("created_at", { ascending: false }),
       supabase.from("earnings_calls").select("*").order("created_at", { ascending: false }),
       resolvedUserId
         ? supabase.from("vault_transactions").select("*").order("created_at", { ascending: false })
@@ -367,7 +406,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
         .limit(16),
     ]);
 
-    const firstError = agentsResult.error ?? predictionsResult.error ?? callsResult.error;
+    const firstError = agentsResult.error ?? predictionsResult.error;
 
     if (firstError) {
       if (isRecoverableSupabaseReadError(firstError)) {
@@ -375,6 +414,9 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
         return emptyDataset();
       }
       throw firstError;
+    }
+    if (callsResult.error && !isRecoverableSupabaseReadError(callsResult.error)) {
+      throw callsResult.error;
     }
 
     let configRows: Tables<"agent_configs">[] = [];
@@ -404,6 +446,8 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
     const agentRows = agentsResult.data ?? [];
     const predictionRows = predictionsResult.data ?? [];
     const outcomeRows = optionalRows("prediction_outcomes", outcomesResult);
+    const callPreviewRows = optionalRows("earnings_call_previews", callPreviewsResult);
+    const fullCallRows = optionalRows("earnings_calls", callsResult);
     const vaultTransactionRows = optionalRows("vault_transactions", txResult);
     const reputationRows = optionalRows("reputation_events", reputationResult);
     const fallbackDelegated = new Map<string, number>();
@@ -437,10 +481,21 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
       ...mapPrediction(prediction, outcomeByPrediction.get(prediction.id)),
       agentId: byUuid.get(prediction.agent_id) ?? prediction.agent_id,
     }));
-    const earningsCalls = (callsResult.data ?? []).map((call) => ({
-      ...mapCall(call),
-      agentId: byUuid.get(call.agent_id) ?? call.agent_id,
+    const fullCallById = new Map(fullCallRows.map((call) => [call.id, call]));
+    const previewIds = new Set(callPreviewRows.map((preview) => preview.call_id));
+    const previewCalls = callPreviewRows.map((preview) => ({
+      ...mapPreviewCall(preview, fullCallById.get(preview.call_id)),
+      agentId: byUuid.get(preview.agent_id) ?? preview.agent_id,
     }));
+    const fullOnlyCalls = fullCallRows
+      .filter((call) => !previewIds.has(call.id))
+      .map((call) => ({
+        ...mapFullCall(call),
+        agentId: byUuid.get(call.agent_id) ?? call.agent_id,
+      }));
+    const earningsCalls = [...previewCalls, ...fullOnlyCalls].sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
     const delegations = delegationRows.map((delegation) => ({
       id: delegation.id,
       agentId: byUuid.get(delegation.agent_id) ?? delegation.agent_id,

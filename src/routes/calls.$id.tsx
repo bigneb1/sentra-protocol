@@ -7,7 +7,7 @@ import { Waveform } from "@/components/sentra/Waveform";
 import { useCallPlayback } from "@/lib/callPlayback";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
-import { unlockCallAction } from "@/lib/sentraActions";
+import { getUnlockedCallAction, unlockCallAction } from "@/lib/sentraActions";
 import { getAgent, getCall, loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
 
 export const Route = createFileRoute("/calls/$id")({
@@ -32,14 +32,40 @@ function CallDetail() {
   };
   const call = getCall(dataset, callId)!;
   const agent = getAgent(dataset, call.agentId);
-  const playback = useCallPlayback(call.transcript, call.audioUrl);
-  const [unlocked, setUnlocked] = useState(call.isFreePreview);
+  const [activeCall, setActiveCall] = useState(call);
+  const [unlocked, setUnlocked] = useState(call.fullContentAvailable || !call.locked);
+  const canPlay = unlocked && !activeCall.locked;
+  const playback = useCallPlayback(
+    canPlay ? activeCall.transcript : "",
+    canPlay ? activeCall.audioUrl : null,
+  );
   const [busy, setBusy] = useState(false);
   const { session } = useAuth();
   const toast = useToast();
   const authHeaders = session?.access_token
     ? { authorization: `Bearer ${session.access_token}` }
     : undefined;
+
+  const loadFullCall = async () => {
+    const full = await getUnlockedCallAction({
+      data: { callId: activeCall.id },
+      headers: authHeaders,
+    });
+    setActiveCall((current) => ({
+      ...current,
+      durationSeconds: full.durationSeconds,
+      transcript: full.transcript,
+      pnlSummary: full.pnlSummary,
+      biggestWin: full.biggestWin,
+      biggestLoss: full.biggestLoss,
+      tomorrowThesis: full.tomorrowThesis,
+      audioUrl: full.audioUrl,
+      isFreePreview: full.isFreePreview,
+      fullContentAvailable: true,
+      locked: false,
+    }));
+    setUnlocked(true);
+  };
 
   const unlock = async () => {
     if (!authHeaders) {
@@ -49,11 +75,11 @@ function CallDetail() {
     setBusy(true);
     try {
       const result = await unlockCallAction({
-        data: { callId: call.id, paymentSource: call.isFreePreview ? "free" : "usdc" },
+        data: { callId: activeCall.id, paymentSource: activeCall.isFreePreview ? "free" : "usdc" },
         headers: authHeaders,
       });
       if (result.status === "unlocked") {
-        setUnlocked(true);
+        await loadFullCall();
         toast.push("Call unlocked");
       } else {
         toast.push(`Payment intent queued for ${result.amountUsdc.toFixed(2)} USDC`);
@@ -65,9 +91,9 @@ function CallDetail() {
     }
   };
 
-  const fullTranscript = unlocked
-    ? call.transcript
-    : `${call.transcript.slice(0, 480)}${call.transcript.length > 480 ? "..." : ""}`;
+  const fullTranscript = canPlay
+    ? activeCall.transcript
+    : `${activeCall.transcript.slice(0, 480)}${activeCall.transcript.length > 480 ? "..." : ""}`;
 
   return (
     <div className="px-6 md:px-10 py-8 max-w-[1120px] mx-auto">
@@ -94,14 +120,14 @@ function CallDetail() {
             </Link>
             <div className="flex-1 min-w-0">
               <div className="text-xs text-primary-light font-mono tracking-widest">
-                {call.date} · {Math.floor(call.durationSeconds / 60)}:
-                {String(call.durationSeconds % 60).padStart(2, "0")}
+                {activeCall.date} · {Math.floor(activeCall.durationSeconds / 60)}:
+                {String(activeCall.durationSeconds % 60).padStart(2, "0")}
               </div>
               <h1 className="font-mono text-2xl md:text-3xl mt-2">{agent?.name ?? "Agent"} call</h1>
-              <p className="text-sm text-muted-foreground mt-2">{call.summary}</p>
+              <p className="text-sm text-muted-foreground mt-2">{activeCall.summary}</p>
             </div>
             <div className="text-xs font-mono text-gold inline-flex items-center gap-1">
-              {call.isFreePreview ? (
+              {activeCall.isFreePreview ? (
                 "Free preview"
               ) : (
                 <>
@@ -115,8 +141,9 @@ function CallDetail() {
             <div className="flex items-center gap-4">
               <button
                 onClick={playback.toggle}
+                disabled={!canPlay && activeCall.locked}
                 aria-label={playback.playing ? "Pause earnings call" : "Play earnings call"}
-                className="w-11 h-11 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9]"
+                className="w-11 h-11 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {playback.playing ? <Pause size={17} /> : <Play size={17} className="ml-0.5" />}
               </button>
@@ -131,7 +158,7 @@ function CallDetail() {
             <p className="text-sm leading-7 text-foreground/85 whitespace-pre-line">
               {fullTranscript}
             </p>
-            {!unlocked && (
+            {!canPlay && activeCall.locked && (
               <button
                 onClick={unlock}
                 disabled={busy}
@@ -147,19 +174,19 @@ function CallDetail() {
           <InsightCard
             icon={<TrendingUp size={16} />}
             label="Biggest Win"
-            value={call.biggestWin || "No win logged yet"}
+            value={activeCall.biggestWin || "No win logged yet"}
             tone="green"
           />
           <InsightCard
             icon={<TrendingDown size={16} />}
             label="Biggest Loss"
-            value={call.biggestLoss || "No loss logged yet"}
+            value={activeCall.biggestLoss || "No loss logged yet"}
             tone="red"
           />
           <InsightCard
             icon={<ShieldCheck size={16} />}
             label="Tomorrow Thesis"
-            value={call.tomorrowThesis || "No thesis published yet"}
+            value={activeCall.tomorrowThesis || "No thesis published yet"}
           />
           <div className="sentra-card p-5">
             <h2 className="font-mono text-sm text-muted-foreground tracking-widest mb-3">

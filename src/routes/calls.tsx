@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Play, Pause, Lock, X } from "lucide-react";
 import {
   getAgent,
@@ -7,7 +7,7 @@ import {
   type EarningsCall,
   type SentraDataset,
 } from "@/lib/sentraData";
-import { unlockCallAction } from "@/lib/sentraActions";
+import { getUnlockedCallAction, unlockCallAction } from "@/lib/sentraActions";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { Waveform } from "@/components/sentra/Waveform";
 import { useToast } from "@/lib/toast";
@@ -133,26 +133,45 @@ function CallRow({
   authHeaders?: HeadersInit;
 }) {
   const agent = getAgent(dataset, call.agentId);
-  const [unlocked, setUnlocked] = useState(false);
-  const [lockedAfterPreview, setLockedAfterPreview] = useState(false);
+  const [activeCall, setActiveCall] = useState(call);
+  const [unlocked, setUnlocked] = useState(call.fullContentAvailable || !call.locked);
   const toast = useToast();
-  const tRef = useRef<number | null>(null);
-  const { playing, stop, supported, toggle } = useCallPlayback(call.transcript, call.audioUrl);
+  const canPlay = unlocked && !activeCall.locked;
+  const { playing, supported, toggle } = useCallPlayback(
+    canPlay ? activeCall.transcript : "",
+    canPlay ? activeCall.audioUrl : null,
+  );
 
-  useEffect(() => {
-    if (playing && !unlocked) {
-      tRef.current = window.setTimeout(() => {
-        stop();
-        setLockedAfterPreview(true);
-      }, 30000);
+  const loadFullCall = async () => {
+    try {
+      const full = await getUnlockedCallAction({
+        data: { callId: activeCall.id },
+        headers: authHeaders,
+      });
+      setActiveCall((current) => ({
+        ...current,
+        durationSeconds: full.durationSeconds,
+        transcript: full.transcript,
+        pnlSummary: full.pnlSummary,
+        biggestWin: full.biggestWin,
+        biggestLoss: full.biggestLoss,
+        tomorrowThesis: full.tomorrowThesis,
+        audioUrl: full.audioUrl,
+        isFreePreview: full.isFreePreview,
+        fullContentAvailable: true,
+        locked: false,
+      }));
+      setUnlocked(true);
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : "Unable to load unlocked call");
     }
-    return () => {
-      if (tRef.current) clearTimeout(tRef.current);
-    };
-  }, [playing, stop, unlocked]);
+  };
 
   const togglePlayback = () => {
-    if (lockedAfterPreview && !unlocked) return;
+    if (!canPlay) {
+      toast.push("Unlock this call before playback");
+      return;
+    }
     toggle();
     if (!supported) toast.push("Audio playback is not supported in this browser");
   };
@@ -164,17 +183,16 @@ function CallRow({
     }
     try {
       const result = await unlockCallAction({
-        data: { callId: call.id, paymentSource: call.isFreePreview ? "free" : "usdc" },
+        data: { callId: activeCall.id, paymentSource: activeCall.isFreePreview ? "free" : "usdc" },
         headers: authHeaders,
       });
       if (result.status === "unlocked") {
-        setUnlocked(true);
-        setLockedAfterPreview(false);
+        await loadFullCall();
       }
       toast.push(
         result.status === "unlocked"
           ? "Call unlocked"
-          : `Unlock payment intent queued · ${call.subscriptionCost.toFixed(2)} USDC`,
+          : `Unlock payment intent queued · ${activeCall.subscriptionCost.toFixed(2)} USDC`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Call unlock failed";
@@ -195,26 +213,21 @@ function CallRow({
         </Link>
         <Link
           to="/calls/$id"
-          params={{ id: call.id }}
+          params={{ id: activeCall.id }}
           className="min-w-0 hover:text-primary-light transition"
         >
           <div className="font-mono">{agent?.name ?? "Unknown agent"}</div>
           <div className="text-xs text-muted-foreground">
-            {call.date} · {Math.floor(call.durationSeconds / 60)}:
-            {String(call.durationSeconds % 60).padStart(2, "0")}
+            {activeCall.date} · {Math.floor(activeCall.durationSeconds / 60)}:
+            {String(activeCall.durationSeconds % 60).padStart(2, "0")}
           </div>
         </Link>
         <div className="flex-1 min-w-[180px]">
-          <Waveform
-            playing={playing}
-            blurred={lockedAfterPreview && !unlocked}
-            bars={56}
-            height={36}
-          />
+          <Waveform playing={playing} blurred={!canPlay} bars={56} height={36} />
         </div>
         <button
           onClick={togglePlayback}
-          disabled={lockedAfterPreview && !unlocked}
+          disabled={!canPlay && activeCall.locked}
           aria-label={playing ? "Pause earnings call" : "Play earnings call"}
           className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9] transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -222,34 +235,34 @@ function CallRow({
         </button>
       </div>
 
-      {!unlocked ? (
+      {!canPlay ? (
         <>
-          <p className="text-sm text-foreground/85 mt-4 line-clamp-3">{call.transcript}</p>
-          {lockedAfterPreview && (
+          <p className="text-sm text-foreground/85 mt-4 line-clamp-3">{activeCall.transcript}</p>
+          {activeCall.locked && (
             <button
               onClick={unlock}
               className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs hover:bg-[#6D28D9]"
             >
-              <Lock size={12} /> Unlock full report — {call.subscriptionCost.toFixed(2)} USDC
+              <Lock size={12} /> Unlock full report — {activeCall.subscriptionCost.toFixed(2)} USDC
             </button>
           )}
           <Link
             to="/calls/$id"
-            params={{ id: call.id }}
+            params={{ id: activeCall.id }}
             className="ml-3 mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded border border-primary text-primary-light text-xs hover:bg-primary/10"
           >
             Details
           </Link>
         </>
       ) : (
-        <p className="text-sm text-foreground/85 mt-4 leading-relaxed">{call.transcript}</p>
+        <p className="text-sm text-foreground/85 mt-4 leading-relaxed">{activeCall.transcript}</p>
       )}
 
       <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <Score label="Price" value={call.isFreePreview ? "Free" : "0.01 USDC"} />
-        <Score label="PnL Summary" value={call.pnlSummary || "Not reported"} />
-        <Score label="Biggest Win" value={call.biggestWin || "None logged"} tone="green" />
-        <Score label="Biggest Loss" value={call.biggestLoss || "None logged"} tone="red" />
+        <Score label="Price" value={activeCall.isFreePreview ? "Free" : "0.01 USDC"} />
+        <Score label="PnL Summary" value={activeCall.pnlSummary || "Not reported"} />
+        <Score label="Biggest Win" value={activeCall.biggestWin || "None logged"} tone="green" />
+        <Score label="Biggest Loss" value={activeCall.biggestLoss || "None logged"} tone="red" />
       </div>
     </div>
   );

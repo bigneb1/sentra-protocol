@@ -383,6 +383,57 @@ export type Database = {
           },
         ];
       };
+      earnings_call_previews: {
+        Row: {
+          agent_id: string;
+          call_date: string;
+          call_id: string;
+          created_at: string;
+          duration_seconds: number | null;
+          is_free_preview: boolean;
+          preview_text: string;
+          price_usdc: number;
+          updated_at: string;
+        };
+        Insert: {
+          agent_id: string;
+          call_date: string;
+          call_id: string;
+          created_at?: string;
+          duration_seconds?: number | null;
+          is_free_preview?: boolean;
+          preview_text?: string;
+          price_usdc?: number;
+          updated_at?: string;
+        };
+        Update: {
+          agent_id?: string;
+          call_date?: string;
+          call_id?: string;
+          created_at?: string;
+          duration_seconds?: number | null;
+          is_free_preview?: boolean;
+          preview_text?: string;
+          price_usdc?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "earnings_call_previews_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "agents";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "earnings_call_previews_call_id_fkey";
+            columns: ["call_id"];
+            isOneToOne: true;
+            referencedRelation: "earnings_calls";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       prediction_outcomes: {
         Row: {
           brier_delta: number | null;

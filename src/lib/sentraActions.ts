@@ -119,6 +119,17 @@ function hashText(value: string) {
   return keccak256(toHex(value));
 }
 
+function recordFromJson(value: Json | unknown): Record<string, unknown> {
+  if (!value || Array.isArray(value) || typeof value !== "object") return {};
+  return value as Record<string, unknown>;
+}
+
+function earningsCallPrice(call: { is_free_preview: boolean; price_usdc: number | null }) {
+  if (call.is_free_preview) return 0;
+  const parsed = Number(call.price_usdc ?? 0);
+  return parsed > 0 ? parsed : 0.01;
+}
+
 function jsonRecord(value: unknown): Record<string, unknown> {
   if (!value || Array.isArray(value) || typeof value !== "object") return {};
   return value as Record<string, unknown>;
@@ -163,6 +174,37 @@ async function requireResolver(userId: string) {
   if (!role) {
     throw new Error("Resolver role required");
   }
+}
+
+async function hasConfirmedCallUnlock(
+  supabaseAdmin: Awaited<ReturnType<typeof getSupabaseAdmin>>,
+  call: { id: string; is_free_preview: boolean; price_usdc: number | null },
+  userId: string,
+) {
+  const price = earningsCallPrice(call);
+  if (price <= 0) return true;
+
+  const { data: unlock, error: unlockError } = await supabaseAdmin
+    .from("call_unlocks")
+    .select("id, amount_paid_usdc")
+    .eq("call_id", call.id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (unlockError) throw unlockError;
+  if (!unlock || Number(unlock.amount_paid_usdc ?? 0) < price) return false;
+
+  const { data: payment, error: paymentError } = await supabaseAdmin
+    .from("circle_transactions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "confirmed")
+    .gte("amount_usdc", price)
+    .eq("raw->>callId", call.id)
+    .limit(1)
+    .maybeSingle();
+  if (paymentError) throw paymentError;
+
+  return Boolean(payment);
 }
 
 async function getCircleWalletClient() {
@@ -862,16 +904,16 @@ export const unlockCallAction = createServerFn({ method: "POST" })
       .single();
     if (callError) throw callError;
 
-    const price = call.is_free_preview ? 0 : 0.01;
-    if (call.is_free_preview || data.txHash) {
+    const price = earningsCallPrice(call);
+    if (call.is_free_preview || price <= 0) {
       const { data: unlock, error } = await supabaseAdmin
         .from("call_unlocks")
         .upsert(
           {
             call_id: call.id,
             user_id: userId,
-            amount_paid_usdc: data.txHash ? price : 0,
-            tx_hash: data.txHash ?? null,
+            amount_paid_usdc: 0,
+            tx_hash: null,
           },
           { onConflict: "user_id,call_id" },
         )
@@ -885,6 +927,22 @@ export const unlockCallAction = createServerFn({ method: "POST" })
         data: unlock,
       });
       return { status: "unlocked" as const, unlockId: unlock.id };
+    }
+
+    const confirmedAccess = await hasConfirmedCallUnlock(supabaseAdmin, call, userId);
+    if (confirmedAccess) {
+      const { data: existingUnlock, error: existingUnlockError } = await supabaseAdmin
+        .from("call_unlocks")
+        .select("id")
+        .eq("call_id", call.id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (existingUnlockError) throw existingUnlockError;
+      return { status: "unlocked" as const, unlockId: existingUnlock?.id ?? call.id };
+    }
+
+    if (data.txHash) {
+      throw new Error("Paid call unlocks are granted only after Circle payment confirmation");
     }
 
     const contracts = getProtocolContracts();
@@ -921,6 +979,69 @@ export const unlockCallAction = createServerFn({ method: "POST" })
     };
   });
 
+export const getUnlockedCallAction = createServerFn({ method: "POST" })
+  .middleware(authMiddleware)
+  .inputValidator(z.object({ callId: z.string().uuid() }))
+  .handler(async ({ data, context }) => {
+    const { userId } = getAuthContext(context);
+    const supabaseAdmin = await getSupabaseAdmin();
+    const { data: call, error: callError } = await supabaseAdmin
+      .from("earnings_calls")
+      .select("*")
+      .eq("id", data.callId)
+      .single();
+    if (callError) throw callError;
+
+    const { data: agent, error: agentError } = await supabaseAdmin
+      .from("agents")
+      .select("owner_id")
+      .eq("id", call.agent_id)
+      .single();
+    if (agentError) throw agentError;
+
+    const { data: unlock, error: unlockError } = await supabaseAdmin
+      .from("call_unlocks")
+      .select("id")
+      .eq("call_id", call.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (unlockError) throw unlockError;
+
+    const { data: role, error: roleError } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (roleError) throw roleError;
+
+    const canRead =
+      call.is_free_preview ||
+      Number(call.price_usdc ?? 0) <= 0 ||
+      (Boolean(unlock) && (await hasConfirmedCallUnlock(supabaseAdmin, call, userId))) ||
+      agent.owner_id === userId ||
+      Boolean(role);
+
+    if (!canRead) {
+      throw new Error("Call is locked");
+    }
+
+    return {
+      id: call.id,
+      agentId: call.agent_id,
+      callDate: call.call_date,
+      durationSeconds: call.duration_seconds ?? 0,
+      transcript: call.transcript ?? call.pnl_summary ?? "",
+      pnlSummary: call.pnl_summary ?? "",
+      biggestWin: call.biggest_win ?? "",
+      biggestLoss: call.biggest_loss ?? "",
+      tomorrowThesis: call.tomorrow_thesis ?? "",
+      audioUrl: call.audio_url,
+      priceUsdc: Number(call.price_usdc ?? 0),
+      isFreePreview: call.is_free_preview,
+    };
+  });
+
 export async function recordCircleWebhookEvent(input: {
   eventId: string;
   eventType: string;
@@ -952,22 +1073,59 @@ export async function reconcileCircleTransaction(input: {
 }) {
   if (!input.circleId) return;
   const supabaseAdmin = await getSupabaseAdmin();
+  const { data: existingTx, error: existingError } = await supabaseAdmin
+    .from("circle_transactions")
+    .select("*")
+    .eq("circle_tx_id", input.circleId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (!existingTx) return;
+
+  const circleStatus = input.status?.toUpperCase();
   const normalizedStatus =
-    input.status === "COMPLETE" || input.status === "CONFIRMED"
+    circleStatus === "COMPLETE" || circleStatus === "CONFIRMED"
       ? "confirmed"
-      : input.status === "FAILED"
+      : circleStatus === "FAILED"
         ? "failed"
         : "pending";
+  const existingRaw = recordFromJson(existingTx.raw);
+  const nextRaw: Record<string, unknown> = {
+    ...existingRaw,
+    payload: input.payload ?? {},
+    txHash: input.txHash ?? null,
+    reconciledAt: new Date().toISOString(),
+  };
 
-  await supabaseAdmin
+  const { data: tx, error } = await supabaseAdmin
     .from("circle_transactions")
     .update({
       status: normalizedStatus,
-      raw: {
-        payload: input.payload ?? {},
-        txHash: input.txHash ?? null,
-        reconciledAt: new Date().toISOString(),
-      } as unknown as Json,
+      raw: nextRaw as unknown as Json,
     })
-    .eq("circle_tx_id", input.circleId);
+    .eq("id", existingTx.id)
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const callId = typeof nextRaw.callId === "string" ? nextRaw.callId : null;
+  if (normalizedStatus !== "confirmed" || !callId || !tx.user_id) return;
+
+  const { data: call, error: callError } = await supabaseAdmin
+    .from("earnings_calls")
+    .select("id, price_usdc, is_free_preview")
+    .eq("id", callId)
+    .single();
+  if (callError) throw callError;
+
+  const price = earningsCallPrice(call);
+  const { error: unlockError } = await supabaseAdmin.from("call_unlocks").upsert(
+    {
+      call_id: call.id,
+      user_id: tx.user_id,
+      amount_paid_usdc: price,
+      tx_hash: input.txHash ?? null,
+    },
+    { onConflict: "user_id,call_id" },
+  );
+  if (unlockError) throw unlockError;
 }
