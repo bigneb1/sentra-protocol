@@ -1,7 +1,7 @@
 // Circle integrations. Two surfaces:
 //   1. USDC ERC-20 reads (live, no API key).
 //   2. Circle Programmable Wallets (W3S) — initialised lazily, requires
-//      VITE_CIRCLE_APP_ID + server-issued user token. Safe to import on the
+//      VITE_CIRCLE_APP_ID or VITE_CIRCLE_CLIENT_KEY + server-issued user token. Safe to import on the
 //      client; the SDK is only constructed when initCircleW3S() is called.
 
 import { createPublicClient, http, erc20Abi, formatUnits } from "viem";
@@ -50,9 +50,11 @@ export async function readUsdcTotalSupply(): Promise<number> {
 let w3sSdk: unknown = null;
 
 export async function initCircleW3S(userToken: string, encryptionKey: string) {
-  const appId = import.meta.env.VITE_CIRCLE_APP_ID as string | undefined;
+  const appId = (import.meta.env.VITE_CIRCLE_APP_ID ?? import.meta.env.VITE_CIRCLE_CLIENT_KEY) as
+    | string
+    | undefined;
   if (!appId) {
-    throw new Error("VITE_CIRCLE_APP_ID is not configured");
+    throw new Error("VITE_CIRCLE_APP_ID or VITE_CIRCLE_CLIENT_KEY is not configured");
   }
   const { W3SSdk } = await import("@circle-fin/w3s-pw-web-sdk");
   const sdk = new W3SSdk({ appSettings: { appId } });

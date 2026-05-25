@@ -26,7 +26,6 @@ const requiredEnv = [
   "SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "CIRCLE_API_KEY",
-  "ENTITY_SECRET",
   "ARC_TESTNET_DEPLOYER_PRIVATE_KEY",
 ] as const;
 
@@ -40,7 +39,11 @@ const requiredContracts = {
   VITE_SENTRA_CALL_ACCESS_ADDRESS: SENTRA_PROTOCOL_CONTRACTS.callAccess,
 } as const;
 
-const missingEnv = requiredEnv.filter((key) => !process.env[key]);
+const missingEnv = [
+  ...requiredEnv.filter((key) => !process.env[key]),
+  !(process.env.ENTITY_SECRET ?? process.env.CIRCLE_ENTITY_SECRET) &&
+    "ENTITY_SECRET or CIRCLE_ENTITY_SECRET",
+].filter(Boolean) as string[];
 const missingContracts = Object.entries(requiredContracts).filter(
   ([, value]) => !value || !isAddress(value),
 );

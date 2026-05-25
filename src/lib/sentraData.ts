@@ -295,6 +295,7 @@ function mapPrediction(
 }
 
 function mapCall(call: Tables<"earnings_calls">): EarningsCall {
+  const paidPriceUsdc = call.is_free_preview ? 0 : 0.01;
   return {
     id: call.id,
     agentId: call.agent_id,
@@ -305,7 +306,7 @@ function mapCall(call: Tables<"earnings_calls">): EarningsCall {
     biggestWin: call.biggest_win ?? "",
     biggestLoss: call.biggest_loss ?? "",
     tomorrowThesis: call.tomorrow_thesis ?? "",
-    subscriptionCost: num(call.price_usdc),
+    subscriptionCost: paidPriceUsdc,
     title: `Earnings Call ${asDay(call.call_date)}`,
     summary: call.pnl_summary ?? "",
     audioUrl: call.audio_url,
@@ -444,4 +445,8 @@ export function getAgentPredictions(dataset: SentraDataset, id: string) {
 
 export function getAgentCalls(dataset: SentraDataset, id: string) {
   return dataset.earningsCalls.filter((call) => call.agentId === id);
+}
+
+export function getCall(dataset: SentraDataset, id: string) {
+  return dataset.earningsCalls.find((call) => call.id === id);
 }

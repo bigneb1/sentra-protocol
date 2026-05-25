@@ -165,6 +165,7 @@ async function getCircleWalletClient() {
     client: initiateDeveloperControlledWalletsClient({
       apiKey: process.env.CIRCLE_API_KEY!,
       entitySecret: (process.env.ENTITY_SECRET ?? process.env.CIRCLE_ENTITY_SECRET)!,
+      baseUrl: process.env.CIRCLE_BASE_URL,
     }),
     missing: [],
   };
@@ -622,7 +623,10 @@ export const resolvePredictionAction = createServerFn({ method: "POST" })
     if (agentError) throw agentError;
 
     const previousScore = Number(agent.reputation ?? 0);
-    const brier = computeBrierScore(Math.round(Number(prediction.agent_prob) * 10_000), data.outcome);
+    const brier = computeBrierScore(
+      Math.round(Number(prediction.agent_prob) * 10_000),
+      data.outcome,
+    );
     const delta = computeReputationDelta(brier);
     const nextScore = computeNextReputation(previousScore, brier);
 
@@ -748,6 +752,79 @@ export const updateReputationAction = createServerFn({ method: "POST" })
       reputationScore: nextScore,
       brierScore: avgBrier,
       validationCount,
+    };
+  });
+
+export const publishEarningsCallAction = createServerFn({ method: "POST" })
+  .middleware(authMiddleware)
+  .inputValidator(
+    z.object({
+      agentId: z.string().uuid(),
+      callDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      durationSeconds: z.number().int().min(15).max(7200),
+      transcript: z.string().min(120).max(50_000),
+      pnlSummary: z.string().min(10).max(1000),
+      biggestWin: z.string().max(1000).optional(),
+      biggestLoss: z.string().max(1000).optional(),
+      tomorrowThesis: z.string().max(1500).optional(),
+      audioUrl: z.string().url().optional().nullable(),
+      isFreePreview: z.boolean().default(false),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    const { userId } = getAuthContext(context);
+    const agent = await requireAgentOwner(data.agentId, userId);
+    const supabaseAdmin = await getSupabaseAdmin();
+    const priceUsdc = data.isFreePreview ? 0 : 0.01;
+    const contentHash = hashJson({
+      agentId: agent.id,
+      callDate: data.callDate,
+      transcript: data.transcript,
+      pnlSummary: data.pnlSummary,
+      priceUsdc,
+    });
+
+    const callRow = {
+      agent_id: agent.id,
+      call_date: data.callDate,
+      duration_seconds: data.durationSeconds,
+      audio_url: data.audioUrl ?? null,
+      transcript: data.transcript,
+      pnl_summary: data.pnlSummary,
+      biggest_win: data.biggestWin ?? null,
+      biggest_loss: data.biggestLoss ?? null,
+      tomorrow_thesis: data.tomorrowThesis ?? null,
+      price_usdc: priceUsdc,
+      is_free_preview: data.isFreePreview,
+    };
+
+    const { data: existingCall, error: existingError } = await supabaseAdmin
+      .from("earnings_calls")
+      .select("id")
+      .eq("agent_id", agent.id)
+      .eq("call_date", data.callDate)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    const request = existingCall
+      ? supabaseAdmin.from("earnings_calls").update(callRow).eq("id", existingCall.id)
+      : supabaseAdmin.from("earnings_calls").insert(callRow);
+
+    const { data: call, error } = await request.select("*").single();
+    if (error) throw error;
+
+    await audit("earnings_call.published", {
+      actorId: userId,
+      table: "earnings_calls",
+      recordId: call.id,
+      data: { ...call, contentHash },
+    });
+
+    return {
+      status: "published" as const,
+      callId: call.id,
+      contentHash,
+      priceUsdc,
     };
   });
 

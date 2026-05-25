@@ -337,7 +337,12 @@ function AgentPage() {
         {tab === "calls" && (
           <div className="mt-6 space-y-3">
             {calls.map((c, i) => (
-              <div key={c.id} className="sentra-card p-4 flex items-center gap-4">
+              <Link
+                key={c.id}
+                to="/calls/$id"
+                params={{ id: c.id }}
+                className="sentra-card p-4 flex items-center gap-4 hover:border-primary transition"
+              >
                 <div className="flex-1 min-w-0">
                   <div className="font-mono text-sm">{c.date}</div>
                   <div className="text-xs text-muted-foreground">
@@ -357,7 +362,7 @@ function AgentPage() {
                     </>
                   )}
                 </div>
-              </div>
+              </Link>
             ))}
             {calls.length === 0 && (
               <div className="sentra-card p-8 text-center text-sm text-muted-foreground">
@@ -436,9 +441,13 @@ function AgentPage() {
           {calls[0] ? (
             <>
               <Waveform bars={36} height={32} />
-              <button className="w-full mt-3 px-3 py-2 rounded-md border border-primary text-primary-light hover:bg-primary/10 text-xs inline-flex items-center justify-center gap-2">
+              <Link
+                to="/calls/$id"
+                params={{ id: calls[0].id }}
+                className="w-full mt-3 px-3 py-2 rounded-md border border-primary text-primary-light hover:bg-primary/10 text-xs inline-flex items-center justify-center gap-2"
+              >
                 <Lock size={12} /> Unlock — {calls[0].subscriptionCost.toFixed(2)} USDC
-              </button>
+              </Link>
             </>
           ) : (
             <p className="text-xs text-muted-foreground">No call available.</p>

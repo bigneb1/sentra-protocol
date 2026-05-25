@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Play, Pause, Lock, X } from "lucide-react";
 import {
@@ -12,6 +12,7 @@ import { AgentAvatar } from "@/components/sentra/Avatar";
 import { Waveform } from "@/components/sentra/Waveform";
 import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth";
+import { useCallPlayback } from "@/lib/callPlayback";
 
 export const Route = createFileRoute("/calls")({
   head: () => ({
@@ -126,23 +127,29 @@ function CallRow({
   authHeaders?: HeadersInit;
 }) {
   const agent = getAgent(dataset, call.agentId);
-  const [playing, setPlaying] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [lockedAfterPreview, setLockedAfterPreview] = useState(false);
   const toast = useToast();
   const tRef = useRef<number | null>(null);
+  const { playing, stop, supported, toggle } = useCallPlayback(call.transcript, call.audioUrl);
 
   useEffect(() => {
     if (playing && !unlocked) {
       tRef.current = window.setTimeout(() => {
-        setPlaying(false);
+        stop();
         setLockedAfterPreview(true);
       }, 30000);
     }
     return () => {
       if (tRef.current) clearTimeout(tRef.current);
     };
-  }, [playing, unlocked]);
+  }, [playing, stop, unlocked]);
+
+  const togglePlayback = () => {
+    if (lockedAfterPreview && !unlocked) return;
+    toggle();
+    if (!supported) toast.push("Audio playback is not supported in this browser");
+  };
 
   const unlock = async () => {
     if (!authHeaders) {
@@ -172,14 +179,25 @@ function CallRow({
   return (
     <div className="sentra-card p-5">
       <div className="flex items-center gap-4 flex-wrap">
-        <AgentAvatar name={agent?.name ?? "Agent"} color={agent?.color ?? "#7C3AED"} size={40} />
-        <div className="min-w-0">
+        <Link
+          to="/agent/$id"
+          params={{ id: agent?.id ?? call.agentId }}
+          className="inline-flex"
+          aria-label={`Open ${agent?.name ?? "agent"} profile`}
+        >
+          <AgentAvatar name={agent?.name ?? "Agent"} color={agent?.color ?? "#7C3AED"} size={40} />
+        </Link>
+        <Link
+          to="/calls/$id"
+          params={{ id: call.id }}
+          className="min-w-0 hover:text-primary-light transition"
+        >
           <div className="font-mono">{agent?.name ?? "Unknown agent"}</div>
           <div className="text-xs text-muted-foreground">
             {call.date} · {Math.floor(call.durationSeconds / 60)}:
             {String(call.durationSeconds % 60).padStart(2, "0")}
           </div>
-        </div>
+        </Link>
         <div className="flex-1 min-w-[180px]">
           <Waveform
             playing={playing}
@@ -189,8 +207,9 @@ function CallRow({
           />
         </div>
         <button
-          onClick={() => setPlaying((p) => !p)}
+          onClick={togglePlayback}
           disabled={lockedAfterPreview && !unlocked}
+          aria-label={playing ? "Pause earnings call" : "Play earnings call"}
           className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9] transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
@@ -208,6 +227,13 @@ function CallRow({
               <Lock size={12} /> Unlock full report — {call.subscriptionCost.toFixed(2)} USDC
             </button>
           )}
+          <Link
+            to="/calls/$id"
+            params={{ id: call.id }}
+            className="ml-3 mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded border border-primary text-primary-light text-xs hover:bg-primary/10"
+          >
+            Details
+          </Link>
         </>
       ) : (
         <p className="text-sm text-foreground/85 mt-4 leading-relaxed">{call.transcript}</p>

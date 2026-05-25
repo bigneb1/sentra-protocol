@@ -18,6 +18,7 @@ import { Route as CallsRouteImport } from './routes/calls'
 import { Route as ArenaRouteImport } from './routes/arena'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CallsIdRouteImport } from './routes/calls.$id'
 import { Route as ApiCircleWebhookRouteImport } from './routes/api.circle-webhook'
 import { Route as AgentIdRouteImport } from './routes/agent.$id'
 
@@ -66,6 +67,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CallsIdRoute = CallsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => CallsRoute,
+} as any)
 const ApiCircleWebhookRoute = ApiCircleWebhookRouteImport.update({
   id: '/api/circle-webhook',
   path: '/api/circle-webhook',
@@ -81,7 +87,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/arena': typeof ArenaRoute
-  '/calls': typeof CallsRoute
+  '/calls': typeof CallsRouteWithChildren
   '/delegate': typeof DelegateRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
@@ -89,12 +95,13 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
+  '/calls/$id': typeof CallsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/arena': typeof ArenaRoute
-  '/calls': typeof CallsRoute
+  '/calls': typeof CallsRouteWithChildren
   '/delegate': typeof DelegateRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
@@ -102,13 +109,14 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
+  '/calls/$id': typeof CallsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/arena': typeof ArenaRoute
-  '/calls': typeof CallsRoute
+  '/calls': typeof CallsRouteWithChildren
   '/delegate': typeof DelegateRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
+  '/calls/$id': typeof CallsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/agent/$id'
     | '/api/circle-webhook'
+    | '/calls/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/agent/$id'
     | '/api/circle-webhook'
+    | '/calls/$id'
   id:
     | '__root__'
     | '/'
@@ -157,13 +168,14 @@ export interface FileRouteTypes {
     | '/register'
     | '/agent/$id'
     | '/api/circle-webhook'
+    | '/calls/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyticsRoute: typeof AnalyticsRoute
   ArenaRoute: typeof ArenaRoute
-  CallsRoute: typeof CallsRoute
+  CallsRoute: typeof CallsRouteWithChildren
   DelegateRoute: typeof DelegateRoute
   DocsRoute: typeof DocsRoute
   LoginRoute: typeof LoginRoute
@@ -238,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/calls/$id': {
+      id: '/calls/$id'
+      path: '/$id'
+      fullPath: '/calls/$id'
+      preLoaderRoute: typeof CallsIdRouteImport
+      parentRoute: typeof CallsRoute
+    }
     '/api/circle-webhook': {
       id: '/api/circle-webhook'
       path: '/api/circle-webhook'
@@ -255,11 +274,21 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface CallsRouteChildren {
+  CallsIdRoute: typeof CallsIdRoute
+}
+
+const CallsRouteChildren: CallsRouteChildren = {
+  CallsIdRoute: CallsIdRoute,
+}
+
+const CallsRouteWithChildren = CallsRoute._addFileChildren(CallsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
   ArenaRoute: ArenaRoute,
-  CallsRoute: CallsRoute,
+  CallsRoute: CallsRouteWithChildren,
   DelegateRoute: DelegateRoute,
   DocsRoute: DocsRoute,
   LoginRoute: LoginRoute,
