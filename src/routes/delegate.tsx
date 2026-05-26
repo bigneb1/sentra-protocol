@@ -44,7 +44,7 @@ function Delegate() {
   const [amount, setAmount] = useState(50);
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [confetti, setConfetti] = useState(false);
-  const [busy, setBusy] = useState<"approve" | "delegate" | null>(null);
+  const [busy, setBusy] = useState<"approve" | "delegate" | "withdraw" | null>(null);
   const [lastTxHash, setLastTxHash] = useState<`0x${string}` | null>(null);
 
   const selected = agents.find((a) => a.id === agentId) ?? agents[0];
@@ -156,15 +156,51 @@ function Delegate() {
       toast.push("Sign in before creating a withdrawal intent");
       return;
     }
+    const delegation = delegations.find((item) => item.id === delegationId);
+    const agent = delegation ? agents.find((item) => item.id === delegation.agentId) : null;
+    if (!delegation || !agent?.registryAgentId) {
+      toast.push("This delegation is missing its on-chain agent id");
+      return;
+    }
+    if (!wallet.chainOk) {
+      wallet.switchToArc();
+      toast.push("Switch to Arc Testnet, then withdraw");
+      return;
+    }
+    if (!sentraProtocolContracts.delegationVault) {
+      toast.push("Delegation vault address is not configured");
+      return;
+    }
     try {
-      await createWithdrawalIntentAction({
-        data: { delegationId, amountUsdc },
+      setBusy("withdraw");
+      const withdrawHash = await writeContractAsync({
+        address: sentraProtocolContracts.delegationVault as Address,
+        abi: sentraDelegationVaultAbi,
+        functionName: "withdraw",
+        args: [agent.registryAgentId, parseUnits(amountUsdc.toFixed(6), 6)],
+      });
+      toast.push("Withdrawal transaction submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: withdrawHash });
+
+      const result = await createWithdrawalIntentAction({
+        data: {
+          delegationId,
+          amountUsdc,
+          txHash: withdrawHash,
+          withdrawerAddress: wallet.address ?? undefined,
+        },
         headers: authHeaders,
       });
-      toast.push(`Withdrawal intent queued for ${agentName}`);
+      toast.push(
+        result.status === "confirmed"
+          ? `Withdrew ${amountUsdc} USDC from ${agentName}`
+          : `Withdrawal intent queued for ${agentName}`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Withdrawal intent failed";
       toast.push(message);
+    } finally {
+      setBusy(null);
     }
   };
   const applyBasket = (basket: string, ids: string[]) => {
@@ -339,7 +375,9 @@ function Delegate() {
                       ? "Approving USDC..."
                       : busy === "delegate"
                         ? "Delegating..."
-                        : "Confirm Delegation"}
+                        : busy === "withdraw"
+                          ? "Withdrawing..."
+                          : "Confirm Delegation"}
                   </button>
                 )}
               </div>

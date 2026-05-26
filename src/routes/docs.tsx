@@ -434,8 +434,8 @@ function Docs() {
         <Row k="Readiness check" v="npm run check:readiness" />
         <p className="text-sm text-muted-foreground">
           Runtime secrets belong in Vercel/Lovable environment settings, never in the repository:
-          Supabase service role, Circle API key, Circle entity secret, Circle kit key, webhook
-          secret, deployer key, and deployed SENTRA contract addresses.
+          Supabase secret/service-role key, Circle API key, Circle entity secret, Circle kit key,
+          webhook secret, deployer key, and deployed SENTRA contract addresses.
         </p>
       </Section>
 

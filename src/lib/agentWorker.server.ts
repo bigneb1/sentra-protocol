@@ -3,6 +3,7 @@ import {
   generateProfessionalEarningsCall,
   type EarningsCallPredictionContext,
 } from "@/lib/earningsCallGenerator";
+import { ensureCallPricedOnArc } from "@/lib/sentraActions";
 
 type TableRow<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -65,6 +66,7 @@ export async function generateDailyCalls(options: { callDate?: string; force?: b
   const predictions = predictionsResult.data ?? [];
   const outcomes = outcomesResult.data ?? [];
   const published: { agent: string; callId: string }[] = [];
+  const priced: { agent: string; callId: string; status: string }[] = [];
   const skipped: { agent: string; reason: string }[] = [];
 
   for (const agent of agents) {
@@ -141,7 +143,17 @@ export async function generateDailyCalls(options: { callDate?: string; force?: b
     const { data: call, error } = await request.select("id").single();
     if (error) throw error;
     published.push({ agent: agent.slug, callId: call.id });
+
+    try {
+      const pricing = await ensureCallPricedOnArc(call.id, 0.01);
+      priced.push({ agent: agent.slug, callId: call.id, status: pricing.status });
+    } catch (error) {
+      skipped.push({
+        agent: agent.slug,
+        reason: error instanceof Error ? `pricing failed: ${error.message}` : "pricing failed",
+      });
+    }
   }
 
-  return { callDate, published, skipped };
+  return { callDate, published, priced, skipped };
 }

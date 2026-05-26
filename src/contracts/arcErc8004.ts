@@ -13,6 +13,13 @@ export const arcErc8004Contracts = {
 export const erc8004IdentityRegistryAbi = [
   {
     type: "function",
+    name: "register",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "metadataURI", type: "string" }],
+    outputs: [{ name: "tokenId", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "ownerOf",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
@@ -24,5 +31,14 @@ export const erc8004IdentityRegistryAbi = [
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
     outputs: [{ name: "uri", type: "string" }],
+  },
+  {
+    type: "event",
+    name: "Transfer",
+    inputs: [
+      { name: "from", type: "address", indexed: true },
+      { name: "to", type: "address", indexed: true },
+      { name: "tokenId", type: "uint256", indexed: true },
+    ],
   },
 ] as const;

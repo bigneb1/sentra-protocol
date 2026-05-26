@@ -20,7 +20,13 @@ export const Route = createFileRoute("/api/circle-webhook")({
     handlers: {
       POST: async ({ request }) => {
         const webhookSecret = process.env.CIRCLE_WEBHOOK_SECRET;
-        if (webhookSecret && request.headers.get("x-sentra-webhook-secret") !== webhookSecret) {
+        if (!webhookSecret) {
+          return Response.json(
+            { error: "CIRCLE_WEBHOOK_SECRET is not configured" },
+            { status: 503 },
+          );
+        }
+        if (request.headers.get("x-sentra-webhook-secret") !== webhookSecret) {
           return Response.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -41,7 +47,7 @@ export const Route = createFileRoute("/api/circle-webhook")({
           eventType,
           payload,
           headers: headersToRecord(request.headers),
-          signatureVerified: Boolean(webhookSecret),
+          signatureVerified: true,
         });
 
         const circleId = String(
@@ -73,7 +79,7 @@ export const Route = createFileRoute("/api/circle-webhook")({
         return Response.json({
           ok: true,
           eventId: event.external_id ?? event.id,
-          verified: Boolean(webhookSecret),
+          verified: true,
         });
       },
     },

@@ -114,7 +114,7 @@ Required for a live product runtime:
 | ----------------------------------------- | ------------- | ------------------------------------------------ |
 | `SUPABASE_URL`                            | server        | Supabase project URL                             |
 | `SUPABASE_PUBLISHABLE_KEY`                | server/client | Supabase anon/publishable key                    |
-| `SUPABASE_SERVICE_ROLE_KEY`               | server        | Server-side admin operations                     |
+| `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY` | server only | Server-side trusted Supabase operations          |
 | `VITE_SUPABASE_URL`                       | client        | Browser Supabase client                          |
 | `VITE_SUPABASE_PUBLISHABLE_KEY`           | client        | Browser Supabase auth/client                     |
 | `VITE_ARC_RPC_URL`                        | client        | Arc RPC override                                 |
@@ -281,7 +281,7 @@ npm run wallets:provision
 Required env:
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY`
 - `CIRCLE_API_KEY`
 - `ENTITY_SECRET` or `CIRCLE_ENTITY_SECRET`
 - optional `CIRCLE_AGENT_WALLET_SET_ID`

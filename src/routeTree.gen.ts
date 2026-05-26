@@ -22,6 +22,7 @@ import { Route as CallsIdRouteImport } from './routes/calls.$id'
 import { Route as ApiCircleWebhookRouteImport } from './routes/api.circle-webhook'
 import { Route as ApiAgentWorkerRouteImport } from './routes/api.agent-worker'
 import { Route as AgentIdRouteImport } from './routes/agent.$id'
+import { Route as ApiAgentMetadataIdRouteImport } from './routes/api.agent-metadata.$id'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -88,6 +89,11 @@ const AgentIdRoute = AgentIdRouteImport.update({
   path: '/agent/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAgentMetadataIdRoute = ApiAgentMetadataIdRouteImport.update({
+  id: '/api/agent-metadata/$id',
+  path: '/api/agent-metadata/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/calls/$id': typeof CallsIdRoute
+  '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -118,6 +125,7 @@ export interface FileRoutesByTo {
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/calls/$id': typeof CallsIdRoute
+  '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/calls/$id': typeof CallsIdRoute
+  '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -151,6 +160,7 @@ export interface FileRouteTypes {
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/calls/$id'
+    | '/api/agent-metadata/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/calls/$id'
+    | '/api/agent-metadata/$id'
   id:
     | '__root__'
     | '/'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/calls/$id'
+    | '/api/agent-metadata/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -196,6 +208,7 @@ export interface RootRouteChildren {
   AgentIdRoute: typeof AgentIdRoute
   ApiAgentWorkerRoute: typeof ApiAgentWorkerRoute
   ApiCircleWebhookRoute: typeof ApiCircleWebhookRoute
+  ApiAgentMetadataIdRoute: typeof ApiAgentMetadataIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -291,6 +304,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/agent-metadata/$id': {
+      id: '/api/agent-metadata/$id'
+      path: '/api/agent-metadata/$id'
+      fullPath: '/api/agent-metadata/$id'
+      preLoaderRoute: typeof ApiAgentMetadataIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -317,6 +337,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgentIdRoute: AgentIdRoute,
   ApiAgentWorkerRoute: ApiAgentWorkerRoute,
   ApiCircleWebhookRoute: ApiCircleWebhookRoute,
+  ApiAgentMetadataIdRoute: ApiAgentMetadataIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

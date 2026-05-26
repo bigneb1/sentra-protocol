@@ -19,6 +19,18 @@ export const erc20ApprovalAbi = [
   },
 ] as const;
 
+export const erc20TransferAbi = [
+  {
+    type: "event",
+    name: "Transfer",
+    inputs: [
+      { name: "from", type: "address", indexed: true },
+      { name: "to", type: "address", indexed: true },
+      { name: "value", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
 export const sentraAgentRegistryAbi = [
   {
     type: "function",
@@ -50,6 +62,44 @@ export const sentraAgentRegistryAbi = [
     inputs: [{ name: "agentId", type: "bytes32" }],
     outputs: [{ name: "cap", type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "isRegistered",
+    stateMutability: "view",
+    inputs: [{ name: "agentId", type: "bytes32" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "erc8004Id",
+    stateMutability: "view",
+    inputs: [{ name: "agentId", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "agentOwner",
+    stateMutability: "view",
+    inputs: [{ name: "agentId", type: "bytes32" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "agentWallet",
+    stateMutability: "view",
+    inputs: [{ name: "agentId", type: "bytes32" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "event",
+    name: "AgentRegistered",
+    inputs: [
+      { name: "agentId", type: "bytes32", indexed: true },
+      { name: "owner", type: "address", indexed: true },
+      { name: "wallet", type: "address", indexed: false },
+      { name: "erc8004Id", type: "uint256", indexed: false },
+    ],
+  },
 ] as const;
 
 export const sentraStakeVaultAbi = [
@@ -62,6 +112,22 @@ export const sentraStakeVaultAbi = [
       { name: "amount", type: "uint256" },
     ],
     outputs: [],
+  },
+  {
+    type: "function",
+    name: "stakeOf",
+    stateMutability: "view",
+    inputs: [{ name: "agentId", type: "bytes32" }],
+    outputs: [{ name: "amount", type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "StakeDeposited",
+    inputs: [
+      { name: "agentId", type: "bytes32", indexed: true },
+      { name: "funder", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
   },
 ] as const;
 
@@ -85,6 +151,26 @@ export const sentraDelegationVaultAbi = [
   },
   {
     type: "function",
+    name: "delegatedBy",
+    stateMutability: "view",
+    inputs: [
+      { name: "agentId", type: "bytes32" },
+      { name: "delegator", type: "address" },
+    ],
+    outputs: [{ name: "amount", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "shareBalanceOf",
+    stateMutability: "view",
+    inputs: [
+      { name: "agentId", type: "bytes32" },
+      { name: "delegator", type: "address" },
+    ],
+    outputs: [{ name: "shares", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "withdraw",
     stateMutability: "nonpayable",
     inputs: [
@@ -92,6 +178,26 @@ export const sentraDelegationVaultAbi = [
       { name: "amount", type: "uint256" },
     ],
     outputs: [],
+  },
+  {
+    type: "event",
+    name: "Delegated",
+    inputs: [
+      { name: "agentId", type: "bytes32", indexed: true },
+      { name: "delegator", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "shares", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Withdrawn",
+    inputs: [
+      { name: "agentId", type: "bytes32", indexed: true },
+      { name: "delegator", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "shares", type: "uint256", indexed: false },
+    ],
   },
 ] as const;
 
@@ -129,5 +235,14 @@ export const sentraCallAccessAbi = [
     stateMutability: "nonpayable",
     inputs: [{ name: "callId", type: "bytes32" }],
     outputs: [],
+  },
+  {
+    type: "event",
+    name: "CallUnlocked",
+    inputs: [
+      { name: "callId", type: "bytes32", indexed: true },
+      { name: "subscriber", type: "address", indexed: true },
+      { name: "price", type: "uint256", indexed: false },
+    ],
   },
 ] as const;

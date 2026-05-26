@@ -8,6 +8,7 @@ import { Logo } from "@/components/sentra/Logo";
 import { useToast } from "@/lib/toast";
 import { arcTestnet } from "@/lib/wagmi";
 import { truncate, useWallet } from "@/lib/wallet";
+import { siweWalletSignInAction } from "@/lib/sentraActions";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -31,7 +32,7 @@ function randomNonce() {
 function walletSignInMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (/web3 provider is disabled/i.test(message)) {
-    return "Supabase Web3 wallet auth is disabled. Enable the Ethereum/Web3 provider in Supabase Auth, then redeploy.";
+    return "Supabase Web3 wallet auth is disabled and the server SIWE fallback did not complete.";
   }
   return message;
 }
@@ -78,7 +79,18 @@ function Login() {
         message,
         signature,
       });
-      if (error) throw error;
+      if (error) {
+        if (!/web3 provider is disabled/i.test(error.message)) throw error;
+        const fallback = await siweWalletSignInAction({
+          data: { message, signature },
+        });
+        const { error: otpError } = await supabase.auth.verifyOtp({
+          email: fallback.email,
+          token: fallback.token,
+          type: "email",
+        });
+        if (otpError) throw otpError;
+      }
       toast.push("Wallet signed in");
       nav({ to: "/arena" });
     } catch (err: unknown) {

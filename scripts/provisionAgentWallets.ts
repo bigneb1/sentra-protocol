@@ -15,7 +15,7 @@ function requiredEnv(name: string) {
 
 const supabase = createClient<Database>(
   requiredEnv("SUPABASE_URL"),
-  requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  process.env.SUPABASE_SECRET_KEY ?? requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
   {
     auth: {
       persistSession: false,

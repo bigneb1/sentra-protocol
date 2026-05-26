@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { parseUnits, type Address } from "viem";
+import { decodeEventLog, parseUnits, type Address, type TransactionReceipt } from "viem";
 import { usePublicClient, useWriteContract } from "wagmi";
 import { ChevronDown, Check, Shield, Wallet, KeyRound, Radio } from "lucide-react";
 import { useToast } from "@/lib/toast";
 import { ARC_ERC8004_REGISTRIES, ARC_GATEWAY } from "@/lib/arcTestnet";
+import { arcErc8004Contracts, erc8004IdentityRegistryAbi } from "@/contracts/arcErc8004";
 import {
   createAgentWalletAction,
   recordAgentOnchainDeploymentAction,
@@ -27,6 +28,32 @@ export const Route = createFileRoute("/register")({
 const strategies = ["Macro", "Sports", "Tech", "Contrarian", "Yield", "Custom"] as const;
 const colors = ["#7C3AED", "#0D9488", "#D97706"];
 type Strategy = (typeof strategies)[number];
+const zeroAddress = "0x0000000000000000000000000000000000000000";
+
+function extractErc8004TokenId(receipt: TransactionReceipt, ownerAddress: string) {
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== arcErc8004Contracts.identityRegistry.toLowerCase()) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: erc8004IdentityRegistryAbi,
+        data: log.data,
+        topics: log.topics,
+        eventName: "Transfer",
+      });
+      const args = decoded.args as { from?: string; to?: string; tokenId?: bigint };
+      if (
+        args.from?.toLowerCase() === zeroAddress &&
+        args.to?.toLowerCase() === ownerAddress.toLowerCase() &&
+        args.tokenId !== undefined
+      ) {
+        return args.tokenId.toString();
+      }
+    } catch {
+      // Ignore non-Transfer logs.
+    }
+  }
+  throw new Error("ERC-8004 identity token id was not found in the transaction receipt");
+}
 
 function Register() {
   const toast = useToast();
@@ -73,6 +100,10 @@ function Register() {
       toast.push("Switch to Arc Testnet, then deploy the agent");
       return;
     }
+    if (!publicClient) {
+      toast.push("Arc RPC client is not ready");
+      return;
+    }
     if (!name.trim()) {
       toast.push("Agent name is required");
       setStep(1);
@@ -115,6 +146,19 @@ function Register() {
         return;
       }
 
+      setDeployStage("Registering ERC-8004 identity");
+      const erc8004TxHash = await writeContractAsync({
+        address: arcErc8004Contracts.identityRegistry as Address,
+        abi: erc8004IdentityRegistryAbi,
+        functionName: "register",
+        args: [registered.metadataUri],
+      });
+      const erc8004Receipt = await publicClient.waitForTransactionReceipt({ hash: erc8004TxHash });
+      if (erc8004Receipt.status !== "success") {
+        throw new Error("ERC-8004 identity registration failed");
+      }
+      const arcErc8004Id = extractErc8004TokenId(erc8004Receipt, wallet.address);
+
       const stakeUnits = parseUnits(stake.toFixed(6), 6);
       const capUnits = parseUnits((publicDel ? cap : 0).toFixed(6), 6);
       const registryAgentId = registered.registryAgentId as `0x${string}`;
@@ -128,7 +172,7 @@ function Register() {
           {
             agentId: registryAgentId,
             wallet: agentWallet.address as Address,
-            arcErc8004Id: BigInt(registered.arcErc8004Id),
+            arcErc8004Id: BigInt(arcErc8004Id),
             metadataHash: registered.metadataHash as `0x${string}`,
             strategyHash: registered.strategyHash as `0x${string}`,
             riskHash: registered.riskHash as `0x${string}`,
@@ -164,7 +208,10 @@ function Register() {
       await recordAgentOnchainDeploymentAction({
         data: {
           agentId: registered.agentId,
-          arcErc8004Id: registered.arcErc8004Id,
+          arcErc8004Id,
+          ownerAddress: wallet.address,
+          agentWalletAddress: agentWallet.address,
+          erc8004TxHash,
           registryTxHash,
           stakeTxHash,
           stakeUsdc: stake,

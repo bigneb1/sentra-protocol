@@ -17,6 +17,7 @@
     "wallets:provision": "node --import tsx/esm scripts/provisionAgentWallets.ts",
     "agents:generate-calls": "node --import tsx/esm scripts/generateEarningsCalls.ts",
     "agents:run": "node --import tsx/esm scripts/runAgentWorker.ts",
+    "agents:install-service": "bash scripts/installAgentWorkerService.sh",
     "check:readiness": "node --import tsx/esm scripts/checkReadiness.ts"
   },
   "dependencies": {

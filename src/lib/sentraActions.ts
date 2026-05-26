@@ -1,7 +1,24 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createPublicClient, createWalletClient, http, keccak256, parseUnits, toHex } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  decodeEventLog,
+  http,
+  isAddressEqual,
+  keccak256,
+  parseUnits,
+  toHex,
+} from "viem";
+import { parseSiweMessage, verifySiweMessage } from "viem/siwe";
 import { z } from "zod";
-import { sentraCallAccessAbi } from "@/contracts/sentraProtocol";
+import { getRequest } from "@tanstack/react-start/server";
+import { erc8004IdentityRegistryAbi } from "@/contracts/arcErc8004";
+import {
+  sentraAgentRegistryAbi,
+  sentraCallAccessAbi,
+  sentraDelegationVaultAbi,
+  sentraStakeVaultAbi,
+} from "@/contracts/sentraProtocol";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Json } from "@/integrations/supabase/types";
 import {
@@ -28,6 +45,8 @@ const money = z.number().finite().min(0).max(100_000_000);
 const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 const bytes32 = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const txHashSchema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
+const siweMessageSchema = z.string().min(80).max(4096);
+const signatureSchema = z.string().regex(/^0x[a-fA-F0-9]+$/);
 
 const arcChain = {
   id: ARC_CHAIN_ID,
@@ -157,6 +176,86 @@ function callPriceUnits(price: number) {
   return parseUnits(price.toFixed(6), 6);
 }
 
+function usdcUnits(amount: number) {
+  return parseUnits(amount.toFixed(6), 6);
+}
+
+function publicAppUrl() {
+  const configured =
+    process.env.SENTRA_PUBLIC_APP_URL ??
+    process.env.PUBLIC_APP_URL ??
+    process.env.VITE_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  return (configured ?? "https://sentra-protocol.vercel.app").replace(/\/+$/, "");
+}
+
+function appDomain() {
+  try {
+    return new URL(publicAppUrl()).host;
+  } catch {
+    return "sentra-protocol.vercel.app";
+  }
+}
+
+function agentMetadataUri(agentId: string) {
+  return `${publicAppUrl()}/api/agent-metadata/${agentId}`;
+}
+
+function sameAddress(a: string | null | undefined, b: string | null | undefined) {
+  if (!a || !b) return false;
+  try {
+    return isAddressEqual(a as `0x${string}`, b as `0x${string}`);
+  } catch {
+    return false;
+  }
+}
+
+function requireBytes32(value: string | null | undefined, label: string) {
+  if (!value || !/^0x[a-fA-F0-9]{64}$/.test(value)) {
+    throw new Error(`${label} is not a valid bytes32 value`);
+  }
+  return value as `0x${string}`;
+}
+
+function requireContractAddress(value: string | null | undefined, label: string) {
+  if (!value || !/^0x[a-fA-F0-9]{40}$/.test(value)) {
+    throw new Error(`${label} contract address is not configured`);
+  }
+  return value as `0x${string}`;
+}
+
+async function requireSuccessfulReceipt(txHash: string, expectedTo?: string) {
+  const receipt = await arcPublicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+  if (receipt.status !== "success") throw new Error(`Transaction ${txHash} was not successful`);
+  if (expectedTo && !sameAddress(receipt.to, expectedTo)) {
+    throw new Error(`Transaction ${txHash} did not target the expected contract`);
+  }
+  return receipt;
+}
+
+function findEventArgs<T extends Record<string, unknown>>(
+  receipt: Awaited<ReturnType<typeof requireSuccessfulReceipt>>,
+  contractAddress: string,
+  abi: readonly unknown[],
+  eventName: string,
+): T | null {
+  for (const log of receipt.logs) {
+    if (!sameAddress(log.address, contractAddress)) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi,
+        data: log.data,
+        topics: log.topics,
+        eventName,
+      });
+      return decoded.args as T;
+    } catch {
+      // Ignore logs from the same contract that are not the event we are validating.
+    }
+  }
+  return null;
+}
+
 function protocolOwnerPrivateKey() {
   const raw =
     process.env.SENTRA_PROTOCOL_OWNER_PRIVATE_KEY ?? process.env.ARC_TESTNET_DEPLOYER_PRIVATE_KEY;
@@ -168,7 +267,7 @@ function protocolOwnerPrivateKey() {
   return normalized as `0x${string}`;
 }
 
-async function ensureCallPricedOnArc(callId: string, price: number) {
+export async function ensureCallPricedOnArc(callId: string, price: number) {
   const contracts = getProtocolContracts();
   if (!contracts.callAccess) throw new Error("Call access contract address is not configured");
 
@@ -317,6 +416,78 @@ async function hasConfirmedCallUnlock(
   return Boolean(payment);
 }
 
+function requestHost() {
+  const request = getRequest();
+  const forwardedHost = request?.headers.get("x-forwarded-host");
+  const host = forwardedHost ?? request?.headers.get("host") ?? appDomain();
+  return host.toLowerCase();
+}
+
+function requestOrigin() {
+  const request = getRequest();
+  const proto = request?.headers.get("x-forwarded-proto") ?? "https";
+  return `${proto}://${requestHost()}`;
+}
+
+export const siweWalletSignInAction = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      message: siweMessageSchema,
+      signature: signatureSchema,
+    }),
+  )
+  .handler(async ({ data }) => {
+    const parsed = parseSiweMessage(data.message);
+    if (!parsed.address) throw new Error("SIWE message is missing an address");
+    if (parsed.chainId !== ARC_CHAIN_ID) throw new Error("Sign in with an Arc Testnet wallet");
+
+    const expectedHost = requestHost();
+    const allowedDomains = new Set([expectedHost, appDomain().toLowerCase()]);
+    if (!parsed.domain || !allowedDomains.has(parsed.domain.toLowerCase())) {
+      throw new Error("SIWE domain does not match this SENTRA deployment");
+    }
+    if (parsed.uri) {
+      const uriHost = new URL(parsed.uri).host.toLowerCase();
+      if (!allowedDomains.has(uriHost)) throw new Error("SIWE URI does not match this deployment");
+    }
+
+    const verified = await verifySiweMessage(arcPublicClient, {
+      message: data.message,
+      signature: data.signature as `0x${string}`,
+      domain: parsed.domain,
+      address: parsed.address,
+      nonce: parsed.nonce,
+      time: new Date(),
+    });
+    if (!verified) throw new Error("Wallet signature could not be verified");
+
+    const supabaseAdmin = await getSupabaseAdmin();
+    const email = `${parsed.address.toLowerCase().slice(2)}@wallet.sentra.local`;
+    const displayName = `${parsed.address.slice(0, 6)}...${parsed.address.slice(-4)}`;
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: {
+        data: {
+          display_name: displayName,
+          wallet_address: parsed.address.toLowerCase(),
+          auth_provider: "siwe",
+        },
+        redirectTo: requestOrigin(),
+      },
+    });
+    if (linkError) throw linkError;
+
+    const otp = linkData.properties?.email_otp;
+    if (!otp) throw new Error("Supabase did not return a wallet session token");
+
+    return {
+      email,
+      token: otp,
+      walletAddress: parsed.address,
+    };
+  });
+
 async function getCircleWalletClient() {
   const missing = missingCircleEnv();
   if (missing.length > 0) {
@@ -367,7 +538,6 @@ export const registerAgentAction = createServerFn({ method: "POST" })
     const strategyHash = hashText(data.strategy);
     const riskHash = hashJson(data.riskLimits);
     const predictionKeyHash = hashText(`sentra:prediction-key:${userId}:${slug}`);
-    const arcErc8004Id = BigInt(Date.now()).toString();
 
     await supabaseAdmin.from("profiles").upsert({ user_id: userId }, { onConflict: "user_id" });
 
@@ -381,13 +551,20 @@ export const registerAgentAction = createServerFn({ method: "POST" })
         description: data.description ?? null,
         status: "draft",
         registry_agent_id: registryAgentId,
-        metadata_uri: `sentra://metadata/${slug}`,
+        metadata_uri: null,
         metadata_hash: metadataHash,
       })
       .select("*")
       .single();
 
     if (agentError) throw agentError;
+
+    const metadataUri = agentMetadataUri(agent.id);
+    const { error: metadataUriError } = await supabaseAdmin
+      .from("agents")
+      .update({ metadata_uri: metadataUri })
+      .eq("id", agent.id);
+    if (metadataUriError) throw metadataUriError;
 
     const { error: configError } = await supabaseAdmin.from("agent_configs").insert({
       agent_id: agent.id,
@@ -426,11 +603,11 @@ export const registerAgentAction = createServerFn({ method: "POST" })
       agentId: agent.id,
       slug: agent.slug,
       registryAgentId,
+      metadataUri,
       metadataHash,
       strategyHash,
       riskHash,
       predictionKeyHash,
-      arcErc8004Id,
       protocolReady: missingProtocolContracts().length === 0,
       missingProtocolEnv: missingProtocolContracts(),
     };
@@ -474,6 +651,9 @@ export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST
     z.object({
       agentId: z.string().uuid(),
       arcErc8004Id: z.string().regex(/^\d+$/),
+      ownerAddress: address,
+      agentWalletAddress: address.optional(),
+      erc8004TxHash: txHashSchema,
       registryTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
       stakeTxHash: z
         .string()
@@ -486,6 +666,93 @@ export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST
     const { userId } = getAuthContext(context);
     const agent = await requireAgentOwner(data.agentId, userId);
     const supabaseAdmin = await getSupabaseAdmin();
+    const contracts = getProtocolContracts();
+    const registry = requireContractAddress(contracts.agentRegistry, "Agent registry");
+    const stakeVault = requireContractAddress(contracts.stakeVault, "Stake vault");
+    const registryAgentId = requireBytes32(agent.registry_agent_id, "Agent registry id");
+    const erc8004Id = BigInt(data.arcErc8004Id);
+
+    await requireSuccessfulReceipt(data.erc8004TxHash, ARC_ERC8004_IDENTITY_REGISTRY);
+    const registryReceipt = await requireSuccessfulReceipt(data.registryTxHash, registry);
+    const registeredEvent = findEventArgs<{
+      agentId?: `0x${string}`;
+      owner?: `0x${string}`;
+      wallet?: `0x${string}`;
+      erc8004Id?: bigint;
+    }>(registryReceipt, registry, sentraAgentRegistryAbi, "AgentRegistered");
+    if (!registeredEvent) throw new Error("AgentRegistered event not found in registry tx");
+    if (registeredEvent.agentId?.toLowerCase() !== registryAgentId.toLowerCase()) {
+      throw new Error("Registry transaction registered a different agent id");
+    }
+    if (!sameAddress(registeredEvent.owner, data.ownerAddress)) {
+      throw new Error("Registry transaction owner does not match the connected wallet");
+    }
+    if (registeredEvent.erc8004Id !== erc8004Id) {
+      throw new Error("Registry transaction recorded a different ERC-8004 id");
+    }
+
+    const [isRegistered, registryErc8004Id, registryOwner, registryWallet, erc8004Owner, tokenUri] =
+      await Promise.all([
+        arcPublicClient.readContract({
+          address: registry,
+          abi: sentraAgentRegistryAbi,
+          functionName: "isRegistered",
+          args: [registryAgentId],
+        }),
+        arcPublicClient.readContract({
+          address: registry,
+          abi: sentraAgentRegistryAbi,
+          functionName: "erc8004Id",
+          args: [registryAgentId],
+        }),
+        arcPublicClient.readContract({
+          address: registry,
+          abi: sentraAgentRegistryAbi,
+          functionName: "agentOwner",
+          args: [registryAgentId],
+        }),
+        arcPublicClient.readContract({
+          address: registry,
+          abi: sentraAgentRegistryAbi,
+          functionName: "agentWallet",
+          args: [registryAgentId],
+        }),
+        arcPublicClient.readContract({
+          address: ARC_ERC8004_IDENTITY_REGISTRY,
+          abi: erc8004IdentityRegistryAbi,
+          functionName: "ownerOf",
+          args: [erc8004Id],
+        }),
+        arcPublicClient.readContract({
+          address: ARC_ERC8004_IDENTITY_REGISTRY,
+          abi: erc8004IdentityRegistryAbi,
+          functionName: "tokenURI",
+          args: [erc8004Id],
+        }),
+      ]);
+
+    if (!isRegistered) throw new Error("Agent is not registered on the SENTRA registry");
+    if (registryErc8004Id !== erc8004Id) throw new Error("SENTRA registry ERC-8004 id mismatch");
+    if (!sameAddress(registryOwner, data.ownerAddress)) {
+      throw new Error("SENTRA registry owner does not match the connected wallet");
+    }
+    if (!sameAddress(erc8004Owner, data.ownerAddress)) {
+      throw new Error("ERC-8004 identity owner does not match the connected wallet");
+    }
+    if (agent.metadata_uri && tokenUri !== agent.metadata_uri) {
+      throw new Error("ERC-8004 metadata URI does not match SENTRA metadata");
+    }
+
+    const { data: wallet, error: walletError } = await supabaseAdmin
+      .from("agent_wallets")
+      .select("*")
+      .eq("agent_id", agent.id)
+      .maybeSingle();
+    if (walletError) throw walletError;
+    const expectedAgentWallet = data.agentWalletAddress ?? wallet?.wallet_address ?? null;
+    if (expectedAgentWallet && !sameAddress(registryWallet, expectedAgentWallet)) {
+      throw new Error("SENTRA registry wallet does not match the Circle agent wallet");
+    }
 
     const { error: updateAgentError } = await supabaseAdmin
       .from("agents")
@@ -496,20 +763,53 @@ export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST
       .eq("id", agent.id);
     if (updateAgentError) throw updateAgentError;
 
+    if (data.stakeUsdc > 0 && !data.stakeTxHash) {
+      throw new Error("Stake transaction hash is required when stake is greater than zero");
+    }
+
     if (data.stakeUsdc > 0 && data.stakeTxHash) {
+      const expectedStake = usdcUnits(data.stakeUsdc);
+      const stakeReceipt = await requireSuccessfulReceipt(data.stakeTxHash, stakeVault);
+      const stakeEvent = findEventArgs<{
+        agentId?: `0x${string}`;
+        funder?: `0x${string}`;
+        amount?: bigint;
+      }>(stakeReceipt, stakeVault, sentraStakeVaultAbi, "StakeDeposited");
+      if (!stakeEvent) throw new Error("StakeDeposited event not found in stake tx");
+      if (stakeEvent.agentId?.toLowerCase() !== registryAgentId.toLowerCase()) {
+        throw new Error("Stake transaction used a different agent id");
+      }
+      if (!sameAddress(stakeEvent.funder, data.ownerAddress)) {
+        throw new Error("Stake transaction funder does not match the connected wallet");
+      }
+      if (stakeEvent.amount !== expectedStake) {
+        throw new Error("Stake transaction amount does not match the requested stake");
+      }
+      const onchainStake = await arcPublicClient.readContract({
+        address: stakeVault,
+        abi: sentraStakeVaultAbi,
+        functionName: "stakeOf",
+        args: [registryAgentId],
+      });
+      if (onchainStake < expectedStake) throw new Error("Stake was not recorded on-chain");
+
       await supabaseAdmin.from("vault_transactions").insert({
         agent_id: agent.id,
         kind: "stake",
         amount_usdc: data.stakeUsdc,
         tx_hash: data.stakeTxHash,
+        block_number: Number(stakeReceipt.blockNumber),
         metadata: {
           registryTxHash: data.registryTxHash,
+          erc8004TxHash: data.erc8004TxHash,
           arcErc8004Id: data.arcErc8004Id,
+          ownerAddress: data.ownerAddress,
+          registryAgentId,
         } as Json,
       });
       await supabaseAdmin
         .from("agent_wallets")
-        .update({ usdc_stake: data.stakeUsdc })
+        .update({ usdc_stake: Number(data.stakeUsdc) })
         .eq("agent_id", agent.id);
     }
 
@@ -684,18 +984,82 @@ export const createDelegationIntentAction = createServerFn({ method: "POST" })
       .single();
     if (agentError) throw agentError;
 
+    const registryAgentId = requireBytes32(agent.registry_agent_id, "Agent registry id");
+    const amountUnits = usdcUnits(data.amountUsdc);
+    let status: "pending" | "active" = "pending";
+    let verifiedBlockNumber: number | null = null;
+
+    if (data.txHash) {
+      if (!data.delegatorAddress) {
+        throw new Error("Delegator wallet address is required to confirm a delegation");
+      }
+      const vault = requireContractAddress(contracts.delegationVault, "Delegation vault");
+      const receipt = await requireSuccessfulReceipt(data.txHash, vault);
+      const delegatedEvent = findEventArgs<{
+        agentId?: `0x${string}`;
+        delegator?: `0x${string}`;
+        amount?: bigint;
+        shares?: bigint;
+      }>(receipt, vault, sentraDelegationVaultAbi, "Delegated");
+      if (!delegatedEvent) throw new Error("Delegated event not found in delegation tx");
+      if (delegatedEvent.agentId?.toLowerCase() !== registryAgentId.toLowerCase()) {
+        throw new Error("Delegation transaction used a different agent id");
+      }
+      if (!sameAddress(delegatedEvent.delegator, data.delegatorAddress)) {
+        throw new Error("Delegation transaction delegator does not match the connected wallet");
+      }
+      if (delegatedEvent.amount !== amountUnits) {
+        throw new Error("Delegation transaction amount does not match the requested amount");
+      }
+      const onchainDelegated = await arcPublicClient.readContract({
+        address: vault,
+        abi: sentraDelegationVaultAbi,
+        functionName: "delegatedBy",
+        args: [registryAgentId, data.delegatorAddress as `0x${string}`],
+      });
+      if (onchainDelegated < amountUnits) throw new Error("Delegation was not recorded on-chain");
+      status = "active";
+      verifiedBlockNumber = Number(receipt.blockNumber);
+    }
+
     const { data: delegation, error } = await supabaseAdmin
       .from("delegations")
       .insert({
         agent_id: data.agentId,
         delegator_id: userId,
         amount_usdc: data.amountUsdc,
-        status: data.txHash ? "active" : "pending",
+        status,
         tx_hash: data.txHash ?? null,
       })
       .select("*")
       .single();
     if (error) throw error;
+
+    if (data.txHash) {
+      const { error: txError } = await supabaseAdmin.from("circle_transactions").upsert(
+        {
+          user_id: userId,
+          agent_id: data.agentId,
+          kind: "transfer",
+          circle_tx_id: `wallet:${data.txHash.toLowerCase()}`,
+          amount_usdc: data.amountUsdc,
+          status: "confirmed",
+          raw: {
+            source: "wallet",
+            purpose: "delegation",
+            delegationId: delegation.id,
+            registryAgentId,
+            delegationVault: contracts.delegationVault,
+            usdcAddress: ARC_USDC_ADDRESS,
+            delegatorAddress: data.delegatorAddress ?? null,
+            txHash: data.txHash,
+            blockNumber: verifiedBlockNumber,
+          } as Json,
+        },
+        { onConflict: "circle_tx_id" },
+      );
+      if (txError) throw txError;
+    }
 
     await audit("delegation.intent_created", {
       actorId: userId,
@@ -707,6 +1071,7 @@ export const createDelegationIntentAction = createServerFn({ method: "POST" })
         delegatorAddress: data.delegatorAddress ?? null,
         missingProtocolEnv: missingProtocolContracts(),
         usdcAddress: ARC_USDC_ADDRESS,
+        verifiedBlockNumber,
       },
     });
     return {
@@ -719,7 +1084,14 @@ export const createDelegationIntentAction = createServerFn({ method: "POST" })
 
 export const createWithdrawalIntentAction = createServerFn({ method: "POST" })
   .middleware(authMiddleware)
-  .inputValidator(z.object({ delegationId: z.string().uuid(), amountUsdc: money.min(0.000001) }))
+  .inputValidator(
+    z.object({
+      delegationId: z.string().uuid(),
+      amountUsdc: money.min(0.000001),
+      txHash: txHashSchema.optional(),
+      withdrawerAddress: address.optional(),
+    }),
+  )
   .handler(async ({ data, context }) => {
     const { userId } = getAuthContext(context);
     const supabaseAdmin = await getSupabaseAdmin();
@@ -730,6 +1102,46 @@ export const createWithdrawalIntentAction = createServerFn({ method: "POST" })
       .eq("delegator_id", userId)
       .single();
     if (delegationError) throw delegationError;
+    if (data.amountUsdc > Number(delegation.amount_usdc)) {
+      throw new Error("Withdrawal amount exceeds this delegation");
+    }
+
+    const { data: agent, error: agentError } = await supabaseAdmin
+      .from("agents")
+      .select("*")
+      .eq("id", delegation.agent_id)
+      .single();
+    if (agentError) throw agentError;
+
+    const contracts = getProtocolContracts();
+    const registryAgentId = requireBytes32(agent.registry_agent_id, "Agent registry id");
+    let verifiedBlockNumber: number | null = null;
+
+    if (data.txHash) {
+      if (!data.withdrawerAddress) {
+        throw new Error("Withdrawer wallet address is required to confirm a withdrawal");
+      }
+      const vault = requireContractAddress(contracts.delegationVault, "Delegation vault");
+      const amountUnits = usdcUnits(data.amountUsdc);
+      const receipt = await requireSuccessfulReceipt(data.txHash, vault);
+      const withdrawnEvent = findEventArgs<{
+        agentId?: `0x${string}`;
+        delegator?: `0x${string}`;
+        amount?: bigint;
+        shares?: bigint;
+      }>(receipt, vault, sentraDelegationVaultAbi, "Withdrawn");
+      if (!withdrawnEvent) throw new Error("Withdrawn event not found in withdrawal tx");
+      if (withdrawnEvent.agentId?.toLowerCase() !== registryAgentId.toLowerCase()) {
+        throw new Error("Withdrawal transaction used a different agent id");
+      }
+      if (!sameAddress(withdrawnEvent.delegator, data.withdrawerAddress)) {
+        throw new Error("Withdrawal transaction wallet does not match the connected wallet");
+      }
+      if (withdrawnEvent.amount !== amountUnits) {
+        throw new Error("Withdrawal transaction amount does not match the requested amount");
+      }
+      verifiedBlockNumber = Number(receipt.blockNumber);
+    }
 
     const { data: tx, error } = await supabaseAdmin
       .from("vault_transactions")
@@ -737,9 +1149,13 @@ export const createWithdrawalIntentAction = createServerFn({ method: "POST" })
         agent_id: delegation.agent_id,
         kind: "unstake",
         amount_usdc: data.amountUsdc,
+        tx_hash: data.txHash ?? null,
+        block_number: verifiedBlockNumber,
         metadata: {
           delegationId: delegation.id,
           actorId: userId,
+          withdrawerAddress: data.withdrawerAddress ?? null,
+          registryAgentId,
           missingProtocolEnv: missingProtocolContracts(),
         } as Json,
       })
@@ -753,8 +1169,50 @@ export const createWithdrawalIntentAction = createServerFn({ method: "POST" })
       recordId: tx.id,
       data: tx,
     });
+
+    if (data.txHash) {
+      const remaining = Math.max(0, Number(delegation.amount_usdc) - data.amountUsdc);
+      const update =
+        remaining > 0
+          ? { amount_usdc: remaining, status: "active" as const }
+          : {
+              amount_usdc: 0,
+              status: "withdrawn" as const,
+              withdrawn_at: new Date().toISOString(),
+            };
+      const { error: updateError } = await supabaseAdmin
+        .from("delegations")
+        .update(update)
+        .eq("id", delegation.id);
+      if (updateError) throw updateError;
+
+      const { error: txError } = await supabaseAdmin.from("circle_transactions").upsert(
+        {
+          user_id: userId,
+          agent_id: delegation.agent_id,
+          kind: "withdrawal",
+          circle_tx_id: `wallet:${data.txHash.toLowerCase()}`,
+          amount_usdc: data.amountUsdc,
+          status: "confirmed",
+          raw: {
+            source: "wallet",
+            purpose: "delegation_withdrawal",
+            delegationId: delegation.id,
+            registryAgentId,
+            delegationVault: contracts.delegationVault,
+            usdcAddress: ARC_USDC_ADDRESS,
+            withdrawerAddress: data.withdrawerAddress ?? null,
+            txHash: data.txHash,
+            blockNumber: verifiedBlockNumber,
+          } as Json,
+        },
+        { onConflict: "circle_tx_id" },
+      );
+      if (txError) throw txError;
+    }
+
     return {
-      status: "created" as const,
+      status: data.txHash ? ("confirmed" as const) : ("created" as const),
       intentId: tx.id,
       missingProtocolEnv: missingProtocolContracts(),
     };
@@ -1157,6 +1615,36 @@ export const unlockCallAction = createServerFn({ method: "POST" })
         hash: data.txHash as `0x${string}`,
       });
       if (receipt.status !== "success") throw new Error("Unlock transaction was not successful");
+      if (!sameAddress(receipt.to, contracts.callAccess)) {
+        throw new Error("Unlock transaction did not target the call access contract");
+      }
+
+      const expectedPrice = callPriceUnits(price);
+      const onchainPrice = await arcPublicClient.readContract({
+        address: contracts.callAccess as `0x${string}`,
+        abi: sentraCallAccessAbi,
+        functionName: "priceByCall",
+        args: [callAccessId(call.id)],
+      });
+      if (onchainPrice !== expectedPrice) {
+        throw new Error("On-chain call price does not match the SENTRA price");
+      }
+
+      const unlockedEvent = findEventArgs<{
+        callId?: `0x${string}`;
+        subscriber?: `0x${string}`;
+        price?: bigint;
+      }>(receipt, contracts.callAccess, sentraCallAccessAbi, "CallUnlocked");
+      if (!unlockedEvent) throw new Error("CallUnlocked event not found in unlock tx");
+      if (unlockedEvent.callId?.toLowerCase() !== callAccessId(call.id).toLowerCase()) {
+        throw new Error("Unlock transaction used a different call id");
+      }
+      if (!sameAddress(unlockedEvent.subscriber, data.payerAddress)) {
+        throw new Error("Unlock transaction payer does not match the connected wallet");
+      }
+      if (unlockedEvent.price !== expectedPrice) {
+        throw new Error("Unlock transaction amount does not match the required 0.01 USDC");
+      }
 
       const hasAccess = await arcPublicClient.readContract({
         address: contracts.callAccess as `0x${string}`,

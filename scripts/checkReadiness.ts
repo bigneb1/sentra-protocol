@@ -24,8 +24,8 @@ const { ARC_ERC8004_REGISTRIES, ARC_RPC_URL, ARC_USDC_ADDRESS } =
 const requiredEnv = [
   "SUPABASE_URL",
   "SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
   "CIRCLE_API_KEY",
+  "CIRCLE_WEBHOOK_SECRET",
   "SENTRA_AGENT_WORKER_SECRET",
 ] as const;
 const deployOnlyEnv = ["ARC_TESTNET_DEPLOYER_PRIVATE_KEY"] as const;
@@ -42,6 +42,8 @@ const requiredContracts = {
 
 const missingEnv = [
   ...requiredEnv.filter((key) => !process.env[key]),
+  !(process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY) &&
+    "SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY",
   !(process.env.ENTITY_SECRET ?? process.env.CIRCLE_ENTITY_SECRET) &&
     "ENTITY_SECRET or CIRCLE_ENTITY_SECRET",
   !(
