@@ -7,6 +7,7 @@ import {
   getAgentPredictions,
   loadSentraDataset,
   type Agent,
+  type SentraDataset,
   type Strategy,
 } from "@/lib/sentraData";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
@@ -49,7 +50,7 @@ const stratFilters: ("All" | Strategy)[] = [
 ];
 
 function Arena() {
-  const dataset = Route.useLoaderData();
+  const dataset = Route.useLoaderData() as SentraDataset;
   const { agents } = dataset;
   const ready = useDelay(1200);
   const [sort, setSort] = useState<SortKey>("brier");

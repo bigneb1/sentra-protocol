@@ -4,7 +4,7 @@ import { parseUnits, type Address } from "viem";
 import { usePublicClient, useWriteContract } from "wagmi";
 import { Wallet, ArrowRight, Check, Layers } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
-import { loadSentraDataset } from "@/lib/sentraData";
+import { loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
 import { createDelegationIntentAction, createWithdrawalIntentAction } from "@/lib/sentraActions";
 import { useWallet } from "@/lib/wallet";
 import { useToast } from "@/lib/toast";
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/delegate")({
 });
 
 function Delegate() {
-  const dataset = Route.useLoaderData();
+  const dataset = Route.useLoaderData() as SentraDataset;
   const { agents, delegations } = dataset;
   const wallet = useWallet();
   const { session } = useAuth();

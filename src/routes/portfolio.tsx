@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Wallet, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip } from "recharts";
-import { loadSentraDataset } from "@/lib/sentraData";
+import { loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
 import { createWithdrawalIntentAction } from "@/lib/sentraActions";
 import { useWallet } from "@/lib/wallet";
 import { useToast } from "@/lib/toast";
@@ -25,7 +25,7 @@ function portfolioSeries(total: number) {
 }
 
 function Portfolio() {
-  const { agents, delegations: allocs, vaultTransactions: txs } = Route.useLoaderData();
+  const { agents, delegations: allocs, vaultTransactions: txs } = Route.useLoaderData() as SentraDataset;
   const { connected } = useWallet();
   const { session } = useAuth();
   const toast = useToast();

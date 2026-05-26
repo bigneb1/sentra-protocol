@@ -18,7 +18,7 @@ import {
   Cell,
 } from "recharts";
 import { TrendingUp, TrendingDown, Activity, DollarSign, ArrowRight, Calendar } from "lucide-react";
-import { loadSentraDataset, type Strategy } from "@/lib/sentraData";
+import { loadSentraDataset, type SentraDataset, type Strategy } from "@/lib/sentraData";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { ReputationRing } from "@/components/sentra/ReputationRing";
@@ -51,7 +51,7 @@ const STRAT_COLORS: Record<string, string> = {
 type Range = "7d" | "30d" | "custom";
 
 function Analytics() {
-  const { agents, predictions } = Route.useLoaderData();
+  const { agents, predictions } = Route.useLoaderData() as SentraDataset;
   const ready = useDelay(800);
   const [range, setRange] = useState<Range>("30d");
   const [customDays, setCustomDays] = useState(14);
