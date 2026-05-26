@@ -714,36 +714,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      get_public_profile: {
-        Args: { _user_id: string }
-        Returns: {
-          avatar_url: string
-          bio: string
-          created_at: string
-          display_name: string
-          id: string
-          user_id: string
-        }[]
-      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
-      }
-      list_earnings_calls_public: {
-        Args: never
-        Returns: {
-          agent_id: string
-          call_date: string
-          created_at: string
-          duration_seconds: number
-          id: string
-          is_free_preview: boolean
-          price_usdc: number
-          updated_at: string
-        }[]
       }
     }
     Enums: {
