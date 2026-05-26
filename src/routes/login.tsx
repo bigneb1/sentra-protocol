@@ -28,6 +28,14 @@ function randomNonce() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function walletSignInMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/web3 provider is disabled/i.test(message)) {
+    return "Supabase Web3 wallet auth is disabled. Enable the Ethereum/Web3 provider in Supabase Auth, then redeploy.";
+  }
+  return message;
+}
+
 function Login() {
   const nav = useNavigate();
   const toast = useToast();
@@ -74,7 +82,7 @@ function Login() {
       toast.push("Wallet signed in");
       nav({ to: "/arena" });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = walletSignInMessage(err);
       toast.push(`Wallet sign-in failed: ${message}`);
     } finally {
       setBusy(null);
