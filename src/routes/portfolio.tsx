@@ -25,7 +25,11 @@ function portfolioSeries(total: number) {
 }
 
 function Portfolio() {
-  const { agents, delegations: allocs, vaultTransactions: txs } = Route.useLoaderData() as SentraDataset;
+  const {
+    agents,
+    delegations: allocs,
+    vaultTransactions: txs,
+  } = Route.useLoaderData() as SentraDataset;
   const { connected } = useWallet();
   const { session } = useAuth();
   const toast = useToast();
