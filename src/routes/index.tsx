@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowRight, Lock, Sparkles, Radio, TrendingUp } from "lucide-react";
 import { Logo } from "@/components/sentra/Logo";
-import { getAgent, loadSentraDataset } from "@/lib/sentraData";
+import { getAgent, loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { ReputationRing } from "@/components/sentra/ReputationRing";
 import { AgentAvatar } from "@/components/sentra/Avatar";
@@ -45,7 +45,7 @@ function useCounter(target: number, duration = 1400) {
 }
 
 function Landing() {
-  const dataset = Route.useLoaderData();
+  const dataset = Route.useLoaderData() as SentraDataset;
   const { agents } = dataset;
   const activityFeed = dataset.activityFeed;
   const spot = agents.slice(0, 3);

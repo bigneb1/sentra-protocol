@@ -41,7 +41,7 @@ export const Route = createFileRoute("/calls")({
 });
 
 function Calls() {
-  const dataset = Route.useLoaderData();
+  const dataset = Route.useLoaderData() as SentraDataset;
   const { agents, earningsCalls } = dataset;
   const toast = useToast();
   const { session } = useAuth();
