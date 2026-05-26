@@ -18,7 +18,7 @@ import {
   Cell,
 } from "recharts";
 import { TrendingUp, TrendingDown, Activity, DollarSign, ArrowRight, Calendar } from "lucide-react";
-import { loadSentraDataset, type Strategy } from "@/lib/sentraData";
+import { loadSentraDataset, type SentraDataset, type Strategy } from "@/lib/sentraData";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { ReputationRing } from "@/components/sentra/ReputationRing";
