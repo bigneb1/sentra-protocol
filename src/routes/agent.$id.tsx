@@ -1,5 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { parseUnits, type Address } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
 import { Copy, Check, ArrowRight, Lock } from "lucide-react";
 import {
   AreaChart,
@@ -27,6 +29,11 @@ import { Waveform } from "@/components/sentra/Waveform";
 import { useToast } from "@/lib/toast";
 import { useWallet } from "@/lib/wallet";
 import { useAuth } from "@/lib/auth";
+import {
+  erc20ApprovalAbi,
+  sentraDelegationVaultAbi,
+  sentraProtocolContracts,
+} from "@/contracts/sentraProtocol";
 
 export const Route = createFileRoute("/agent/$id")({
   loader: async ({ params }) => {
@@ -50,12 +57,15 @@ function AgentPage() {
   const toast = useToast();
   const wallet = useWallet();
   const { session } = useAuth();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
 
   const [tab, setTab] = useState<"overview" | "predictions" | "history" | "calls">("overview");
   const [range, setRange] = useState<"30" | "90" | "all">("30");
   const [copied, setCopied] = useState(false);
   const [followed, setFollowed] = useState(false);
   const [delegateAmt, setDelegateAmt] = useState(50);
+  const [delegateBusy, setDelegateBusy] = useState<"approve" | "delegate" | null>(null);
 
   useEffect(() => {
     const f = JSON.parse(localStorage.getItem("sentra_follows") || "[]");
@@ -109,20 +119,59 @@ function AgentPage() {
       toast.push("Sign in before creating a delegation intent");
       return;
     }
+    if (!wallet.chainOk) {
+      wallet.switchToArc();
+      toast.push("Switch to Arc Testnet, then confirm the delegation");
+      return;
+    }
+    if (!agent.registryAgentId) {
+      toast.push("This agent is missing its on-chain registry id");
+      return;
+    }
+    if (!sentraProtocolContracts.delegationVault) {
+      toast.push("Delegation vault address is not configured");
+      return;
+    }
     try {
       const amountUsdc = Math.min(delegateAmt, delegateMax);
+      const vault = sentraProtocolContracts.delegationVault as Address;
+      const amountUnits = parseUnits(amountUsdc.toFixed(6), 6);
+
+      setDelegateBusy("approve");
+      const approvalHash = await writeContractAsync({
+        address: sentraProtocolContracts.usdc as Address,
+        abi: erc20ApprovalAbi,
+        functionName: "approve",
+        args: [vault, amountUnits],
+      });
+      toast.push("USDC approval submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: approvalHash });
+
+      setDelegateBusy("delegate");
+      const delegateHash = await writeContractAsync({
+        address: vault,
+        abi: sentraDelegationVaultAbi,
+        functionName: "delegate",
+        args: [agent.registryAgentId, amountUnits],
+      });
+      toast.push("Delegation transaction submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: delegateHash });
+
       await createDelegationIntentAction({
         data: {
           agentId: agent.databaseId,
           amountUsdc,
           delegatorAddress: wallet.address ?? undefined,
+          txHash: delegateHash,
         },
         headers: authHeaders,
       });
-      toast.push(`Delegation intent queued for ${amountUsdc} USDC to ${agent.name}`);
+      toast.push(`Delegated ${amountUsdc} USDC to ${agent.name}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Delegation intent failed";
+      const message = error instanceof Error ? error.message : "Delegation failed";
       toast.push(message);
+    } finally {
+      setDelegateBusy(null);
     }
   };
 
@@ -429,10 +478,16 @@ function AgentPage() {
           ) : (
             <button
               onClick={delegate}
-              disabled={capLeft <= 0}
+              disabled={capLeft <= 0 || delegateBusy !== null}
               className="w-full mt-4 px-4 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed transition text-sm font-medium"
             >
-              {capLeft <= 0 ? "Cap Full" : "Delegate"}
+              {capLeft <= 0
+                ? "Cap Full"
+                : delegateBusy === "approve"
+                  ? "Approving USDC..."
+                  : delegateBusy === "delegate"
+                    ? "Delegating..."
+                    : "Delegate"}
             </button>
           )}
           <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">

@@ -121,6 +121,7 @@ export type Database = {
           metadata_uri: string | null;
           name: string;
           owner_id: string;
+          registry_agent_id: string | null;
           reputation: number;
           slug: string;
           status: Database["public"]["Enums"]["agent_status"];
@@ -139,6 +140,7 @@ export type Database = {
           metadata_uri?: string | null;
           name: string;
           owner_id: string;
+          registry_agent_id?: string | null;
           reputation?: number;
           slug: string;
           status?: Database["public"]["Enums"]["agent_status"];
@@ -157,6 +159,7 @@ export type Database = {
           metadata_uri?: string | null;
           name?: string;
           owner_id?: string;
+          registry_agent_id?: string | null;
           reputation?: number;
           slug?: string;
           status?: Database["public"]["Enums"]["agent_status"];

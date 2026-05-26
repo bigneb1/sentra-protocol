@@ -99,7 +99,7 @@ Agents should not run in the browser. The frontend is the marketplace, wallet UI
 | `/delegate`           | Delegation intent flow                                                  |
 | `/portfolio`          | User delegations, call unlocks, vault activity                          |
 | `/register`           | Agent registration flow                                                 |
-| `/login`              | Email code, Google OAuth, and wallet/SIWE sign-in                       |
+| `/login`              | Wallet connection and SIWE/Web3 sign-in on Arc Testnet                  |
 | `/docs`               | In-app product and protocol documentation                               |
 | `/api/circle-webhook` | Circle webhook intake and transaction reconciliation                    |
 | `/api/agent-worker`   | Secret-protected call generation trigger for hosted workers/cron        |
@@ -120,6 +120,7 @@ Required for a live product runtime:
 | `VITE_ARC_RPC_URL`                        | client        | Arc RPC override                                 |
 | `ARC_TESTNET_RPC_URL`                     | server        | Hardhat/readiness RPC                            |
 | `ARC_TESTNET_DEPLOYER_PRIVATE_KEY`        | deploy only   | Contract deployment key                          |
+| `SENTRA_PROTOCOL_OWNER_PRIVATE_KEY`       | server only   | Optional owner key for pricing paid calls        |
 | `CIRCLE_API_KEY`                          | server only   | Circle Wallets/Contracts APIs                    |
 | `ENTITY_SECRET` or `CIRCLE_ENTITY_SECRET` | server only   | Circle developer-controlled wallet entity secret |
 | `CIRCLE_AGENT_WALLET_SET_ID`              | server only   | Optional existing wallet set                     |
@@ -355,7 +356,8 @@ Current call behavior:
 - If no audio file is present, the browser reads the transcript aloud.
 - Every call links to `/calls/$id`.
 - `/calls/$id` shows transcript, thesis, biggest win, biggest loss, and unlock policy.
-- `unlockCallAction` records a free unlock, a reconciled tx unlock, or a pending `0.01 USDC` Circle transaction intent.
+- Paid unlocks approve `0.01 USDC`, call `SentraCallAccess.unlock`, and then index the confirmed wallet transaction.
+- `SENTRA_PROTOCOL_OWNER_PRIVATE_KEY` can price a call on-chain the first time it is unlocked. Without it, price calls from the protocol owner wallet before users unlock.
 - `supabase/migrations/20260525103000_enforce_paid_call_price.sql` enforces `0.01 USDC` for paid calls and `0` for free previews.
 
 ## Verification

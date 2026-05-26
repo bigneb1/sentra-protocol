@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { type Address, parseUnits } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
 import { Play, Pause, Lock, X } from "lucide-react";
 import {
   getAgent,
@@ -7,12 +9,22 @@ import {
   type EarningsCall,
   type SentraDataset,
 } from "@/lib/sentraData";
-import { getUnlockedCallAction, unlockCallAction } from "@/lib/sentraActions";
+import {
+  getUnlockedCallAction,
+  prepareCallUnlockAction,
+  unlockCallAction,
+} from "@/lib/sentraActions";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { Waveform } from "@/components/sentra/Waveform";
 import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth";
 import { useCallPlayback } from "@/lib/callPlayback";
+import { useWallet } from "@/lib/wallet";
+import {
+  erc20ApprovalAbi,
+  sentraCallAccessAbi,
+  sentraProtocolContracts,
+} from "@/contracts/sentraProtocol";
 
 export const Route = createFileRoute("/calls")({
   head: () => ({
@@ -135,7 +147,13 @@ function CallRow({
   const agent = getAgent(dataset, call.agentId);
   const [activeCall, setActiveCall] = useState(call);
   const [unlocked, setUnlocked] = useState(call.fullContentAvailable || !call.locked);
+  const [unlockBusy, setUnlockBusy] = useState<"pricing" | "approve" | "unlock" | "confirm" | null>(
+    null,
+  );
   const toast = useToast();
+  const wallet = useWallet();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
   const canPlay = unlocked && !activeCall.locked;
   const { playing, supported, toggle } = useCallPlayback(
     canPlay ? activeCall.transcript : "",
@@ -181,22 +199,93 @@ function CallRow({
       toast.push("Sign in before unlocking call archives");
       return;
     }
+    if (!activeCall.isFreePreview && (!wallet.connected || !wallet.address)) {
+      toast.push("Connect and sign in with a wallet before unlocking paid calls");
+      return;
+    }
+    if (!activeCall.isFreePreview && !wallet.chainOk) {
+      wallet.switchToArc();
+      toast.push("Switch to Arc Testnet, then unlock the call");
+      return;
+    }
+    const payerAddress = wallet.address ?? undefined;
     try {
+      if (activeCall.isFreePreview) {
+        setUnlockBusy("confirm");
+        const result = await unlockCallAction({
+          data: { callId: activeCall.id, paymentSource: "free" },
+          headers: authHeaders,
+        });
+        if (result.status === "unlocked") await loadFullCall();
+        toast.push("Call unlocked");
+        return;
+      }
+
+      setUnlockBusy("pricing");
+      const prepared = await prepareCallUnlockAction({
+        data: { callId: activeCall.id },
+        headers: authHeaders,
+      });
+
+      if (prepared.status === "needs_owner_pricing") {
+        toast.push(
+          `Call needs on-chain pricing. Add ${prepared.missingEnv.join(", ")} to Vercel or price it from the protocol owner wallet.`,
+        );
+        return;
+      }
+      if (prepared.status === "free") {
+        await loadFullCall();
+        toast.push("Call unlocked");
+        return;
+      }
+      if (!sentraProtocolContracts.callAccess) {
+        toast.push("Call access contract address is not configured");
+        return;
+      }
+
+      const callAccess = prepared.callAccess as Address;
+      const amountUnits = parseUnits(activeCall.subscriptionCost.toFixed(6), 6);
+      setUnlockBusy("approve");
+      const approvalHash = await writeContractAsync({
+        address: sentraProtocolContracts.usdc as Address,
+        abi: erc20ApprovalAbi,
+        functionName: "approve",
+        args: [callAccess, amountUnits],
+      });
+      toast.push("USDC approval submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: approvalHash });
+
+      setUnlockBusy("unlock");
+      const unlockHash = await writeContractAsync({
+        address: callAccess,
+        abi: sentraCallAccessAbi,
+        functionName: "unlock",
+        args: [prepared.callAccessId],
+      });
+      toast.push("Call unlock transaction submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: unlockHash });
+
+      setUnlockBusy("confirm");
       const result = await unlockCallAction({
-        data: { callId: activeCall.id, paymentSource: activeCall.isFreePreview ? "free" : "usdc" },
+        data: {
+          callId: activeCall.id,
+          paymentSource: "usdc",
+          txHash: unlockHash,
+          payerAddress,
+        },
         headers: authHeaders,
       });
       if (result.status === "unlocked") {
         await loadFullCall();
+        toast.push("Call unlocked");
+      } else {
+        toast.push("Unlock submitted, waiting for confirmation");
       }
-      toast.push(
-        result.status === "unlocked"
-          ? "Call unlocked"
-          : `Unlock payment intent queued · ${activeCall.subscriptionCost.toFixed(2)} USDC`,
-      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Call unlock failed";
       toast.push(message);
+    } finally {
+      setUnlockBusy(null);
     }
   };
 
@@ -241,9 +330,19 @@ function CallRow({
           {activeCall.locked && (
             <button
               onClick={unlock}
+              disabled={unlockBusy !== null}
               className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs hover:bg-[#6D28D9]"
             >
-              <Lock size={12} /> Unlock full report — {activeCall.subscriptionCost.toFixed(2)} USDC
+              <Lock size={12} />{" "}
+              {unlockBusy === "pricing"
+                ? "Preparing..."
+                : unlockBusy === "approve"
+                  ? "Approving..."
+                  : unlockBusy === "unlock"
+                    ? "Unlocking..."
+                    : unlockBusy === "confirm"
+                      ? "Confirming..."
+                      : `Unlock full report — ${activeCall.subscriptionCost.toFixed(2)} USDC`}
             </button>
           )}
           <Link

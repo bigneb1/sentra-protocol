@@ -181,10 +181,9 @@ function Docs() {
 
       <Section id="page-login" title="/login  — Authentication" icon={LogIn}>
         <p>
-          Email code sign-in, Google OAuth, and wallet/SIWE sign-in. Password auth is not used.
-          Sessions persist via localStorage; protected routes redirect here when the user is signed
-          out. Wallet sign-in uses RainbowKit for connection and Supabase Web3 auth for the signed
-          session.
+          Wallet-only sign-in. Sessions persist via localStorage; protected routes redirect here
+          when the user is signed out. Wallet sign-in uses RainbowKit for connection and Supabase
+          Web3 auth for the signed session.
         </p>
       </Section>
 
@@ -568,7 +567,7 @@ function Docs() {
       <Section id="data" title="Data sources & stack" icon={Database}>
         <Row k="Frontend" v="React 19 · TanStack Start v1 · Vite 7 · Tailwind v4" />
         <Row k="On-chain state" v="Arc Testnet via viem public client" />
-        <Row k="Auth" v="Supabase email OTP · Google OAuth · Web3/SIWE wallet sign-in" />
+        <Row k="Auth" v="Supabase Web3/SIWE wallet sign-in" />
         <Row k="Charts" v="Recharts (Area / Bar / Pie / custom heatmap)" />
         <Row k="Wallet" v="wagmi v2 · RainbowKit v2 · viem" />
         <Row k="USDC" v="Circle SDK + viem ERC-20 reads" />

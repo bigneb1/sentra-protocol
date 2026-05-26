@@ -1,12 +1,18 @@
 import { createServerFn } from "@tanstack/react-start";
-import { keccak256, toHex } from "viem";
+import { createPublicClient, createWalletClient, http, keccak256, parseUnits, toHex } from "viem";
 import { z } from "zod";
+import { sentraCallAccessAbi } from "@/contracts/sentraProtocol";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Json } from "@/integrations/supabase/types";
 import {
+  ARC_CHAIN_ID,
   ARC_CIRCLE_BLOCKCHAIN,
   ARC_ERC8004_IDENTITY_REGISTRY,
   ARC_ERC8004_REPUTATION_REGISTRY,
+  ARC_EXPLORER,
+  ARC_NATIVE_CURRENCY_DECIMALS,
+  ARC_NETWORK_NAME,
+  ARC_RPC_URL,
   ARC_USDC_ADDRESS,
 } from "@/lib/arcTestnet";
 import { SENTRA_ARC_TESTNET_DEPLOYMENT } from "@/lib/agentTypes";
@@ -21,6 +27,30 @@ const strategies = ["Macro", "Sports", "Contrarian", "Yield", "Tech", "Custom"] 
 const money = z.number().finite().min(0).max(100_000_000);
 const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 const bytes32 = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
+const txHashSchema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
+
+const arcChain = {
+  id: ARC_CHAIN_ID,
+  name: ARC_NETWORK_NAME,
+  nativeCurrency: {
+    name: "USDC",
+    symbol: "USDC",
+    decimals: ARC_NATIVE_CURRENCY_DECIMALS,
+  },
+  rpcUrls: {
+    default: { http: [ARC_RPC_URL] },
+    public: { http: [ARC_RPC_URL] },
+  },
+  blockExplorers: {
+    default: { name: "Arcscan", url: ARC_EXPLORER },
+  },
+  testnet: true,
+} as const;
+
+const arcPublicClient = createPublicClient({
+  chain: arcChain,
+  transport: http(ARC_RPC_URL),
+});
 
 const riskLimitsSchema = z.object({
   maxDailyLossUsdc: money,
@@ -117,6 +147,86 @@ function hashJson(value: unknown) {
 
 function hashText(value: string) {
   return keccak256(toHex(value));
+}
+
+function callAccessId(callId: string) {
+  return `0x${callId.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
+}
+
+function callPriceUnits(price: number) {
+  return parseUnits(price.toFixed(6), 6);
+}
+
+function protocolOwnerPrivateKey() {
+  const raw =
+    process.env.SENTRA_PROTOCOL_OWNER_PRIVATE_KEY ?? process.env.ARC_TESTNET_DEPLOYER_PRIVATE_KEY;
+  if (!raw) return null;
+  const normalized = raw.startsWith("0x") ? raw : `0x${raw}`;
+  if (!/^0x[a-fA-F0-9]{64}$/.test(normalized)) {
+    throw new Error("Protocol owner private key is not a valid 32-byte hex key");
+  }
+  return normalized as `0x${string}`;
+}
+
+async function ensureCallPricedOnArc(callId: string, price: number) {
+  const contracts = getProtocolContracts();
+  if (!contracts.callAccess) throw new Error("Call access contract address is not configured");
+
+  const id = callAccessId(callId);
+  const priceUnits = callPriceUnits(price);
+  const currentPrice = await arcPublicClient.readContract({
+    address: contracts.callAccess as `0x${string}`,
+    abi: sentraCallAccessAbi,
+    functionName: "priceByCall",
+    args: [id],
+  });
+
+  if (currentPrice === priceUnits) {
+    return {
+      status: "ready" as const,
+      callAccess: contracts.callAccess,
+      callAccessId: id,
+      amountUsdc: price,
+      amountUnits: priceUnits.toString(),
+      pricingTxHash: null as `0x${string}` | null,
+    };
+  }
+
+  const privateKey = protocolOwnerPrivateKey();
+  if (!privateKey) {
+    return {
+      status: "needs_owner_pricing" as const,
+      callAccess: contracts.callAccess,
+      callAccessId: id,
+      amountUsdc: price,
+      amountUnits: priceUnits.toString(),
+      missingEnv: ["SENTRA_PROTOCOL_OWNER_PRIVATE_KEY"],
+    };
+  }
+
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const walletClient = createWalletClient({
+    account: privateKeyToAccount(privateKey),
+    chain: arcChain,
+    transport: http(ARC_RPC_URL),
+  });
+  const pricingTxHash = await walletClient.writeContract({
+    address: contracts.callAccess as `0x${string}`,
+    abi: sentraCallAccessAbi,
+    functionName: "setCallPrice",
+    args: [id, priceUnits],
+  });
+  const receipt = await arcPublicClient.waitForTransactionReceipt({ hash: pricingTxHash });
+  if (receipt.status !== "success") throw new Error("Call pricing transaction failed");
+
+  return {
+    status: "ready" as const,
+    callAccess: contracts.callAccess,
+    callAccessId: id,
+    amountUsdc: price,
+    amountUnits: priceUnits.toString(),
+    pricingTxHash,
+  };
 }
 
 function recordFromJson(value: Json | unknown): Record<string, unknown> {
@@ -254,6 +364,10 @@ export const registerAgentAction = createServerFn({ method: "POST" })
     };
     const metadataHash = hashJson(metadata);
     const registryAgentId = hashText(`sentra:${userId}:${slug}:${crypto.randomUUID()}`);
+    const strategyHash = hashText(data.strategy);
+    const riskHash = hashJson(data.riskLimits);
+    const predictionKeyHash = hashText(`sentra:prediction-key:${userId}:${slug}`);
+    const arcErc8004Id = BigInt(Date.now()).toString();
 
     await supabaseAdmin.from("profiles").upsert({ user_id: userId }, { onConflict: "user_id" });
 
@@ -266,6 +380,7 @@ export const registerAgentAction = createServerFn({ method: "POST" })
         strategy: data.strategy,
         description: data.description ?? null,
         status: "draft",
+        registry_agent_id: registryAgentId,
         metadata_uri: `sentra://metadata/${slug}`,
         metadata_hash: metadataHash,
       })
@@ -312,6 +427,10 @@ export const registerAgentAction = createServerFn({ method: "POST" })
       slug: agent.slug,
       registryAgentId,
       metadataHash,
+      strategyHash,
+      riskHash,
+      predictionKeyHash,
+      arcErc8004Id,
       protocolReady: missingProtocolContracts().length === 0,
       missingProtocolEnv: missingProtocolContracts(),
     };
@@ -347,6 +466,61 @@ export const createStakeIntentAction = createServerFn({ method: "POST" })
       data: tx,
     });
     return { status: "created" as const, intentId: tx.id, stakeVault: contracts.stakeVault };
+  });
+
+export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST" })
+  .middleware(authMiddleware)
+  .inputValidator(
+    z.object({
+      agentId: z.string().uuid(),
+      arcErc8004Id: z.string().regex(/^\d+$/),
+      registryTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+      stakeTxHash: z
+        .string()
+        .regex(/^0x[a-fA-F0-9]{64}$/)
+        .optional(),
+      stakeUsdc: money,
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    const { userId } = getAuthContext(context);
+    const agent = await requireAgentOwner(data.agentId, userId);
+    const supabaseAdmin = await getSupabaseAdmin();
+
+    const { error: updateAgentError } = await supabaseAdmin
+      .from("agents")
+      .update({
+        status: "active",
+        arc_erc8004_id: Number(data.arcErc8004Id),
+      })
+      .eq("id", agent.id);
+    if (updateAgentError) throw updateAgentError;
+
+    if (data.stakeUsdc > 0 && data.stakeTxHash) {
+      await supabaseAdmin.from("vault_transactions").insert({
+        agent_id: agent.id,
+        kind: "stake",
+        amount_usdc: data.stakeUsdc,
+        tx_hash: data.stakeTxHash,
+        metadata: {
+          registryTxHash: data.registryTxHash,
+          arcErc8004Id: data.arcErc8004Id,
+        } as Json,
+      });
+      await supabaseAdmin
+        .from("agent_wallets")
+        .update({ usdc_stake: data.stakeUsdc })
+        .eq("agent_id", agent.id);
+    }
+
+    await audit("agent.onchain_deployed", {
+      actorId: userId,
+      table: "agents",
+      recordId: agent.id,
+      data,
+    });
+
+    return { status: "recorded" as const };
   });
 
 export const createAgentWalletAction = createServerFn({ method: "POST" })
@@ -493,6 +667,10 @@ export const createDelegationIntentAction = createServerFn({ method: "POST" })
       agentId: z.string().uuid(),
       amountUsdc: money.min(0.000001),
       delegatorAddress: address.optional(),
+      txHash: z
+        .string()
+        .regex(/^0x[a-fA-F0-9]{64}$/)
+        .optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -512,7 +690,8 @@ export const createDelegationIntentAction = createServerFn({ method: "POST" })
         agent_id: data.agentId,
         delegator_id: userId,
         amount_usdc: data.amountUsdc,
-        status: "pending",
+        status: data.txHash ? "active" : "pending",
+        tx_hash: data.txHash ?? null,
       })
       .select("*")
       .single();
@@ -882,16 +1061,41 @@ export const publishEarningsCallAction = createServerFn({ method: "POST" })
     };
   });
 
+export const prepareCallUnlockAction = createServerFn({ method: "POST" })
+  .middleware(authMiddleware)
+  .inputValidator(z.object({ callId: z.string().uuid() }))
+  .handler(async ({ data }) => {
+    const supabaseAdmin = await getSupabaseAdmin();
+    const { data: call, error } = await supabaseAdmin
+      .from("earnings_calls")
+      .select("id, price_usdc, is_free_preview")
+      .eq("id", data.callId)
+      .single();
+    if (error) throw error;
+
+    const price = earningsCallPrice(call);
+    if (call.is_free_preview || price <= 0) {
+      return {
+        status: "free" as const,
+        callAccess: null,
+        callAccessId: callAccessId(call.id),
+        amountUsdc: 0,
+        amountUnits: "0",
+        pricingTxHash: null,
+      };
+    }
+
+    return ensureCallPricedOnArc(call.id, price);
+  });
+
 export const unlockCallAction = createServerFn({ method: "POST" })
   .middleware(authMiddleware)
   .inputValidator(
     z.object({
       callId: z.string().uuid(),
       paymentSource: z.enum(["usdc", "gateway", "free"]).default("usdc"),
-      txHash: z
-        .string()
-        .regex(/^0x[a-fA-F0-9]{64}$/)
-        .optional(),
+      txHash: txHashSchema.optional(),
+      payerAddress: address.optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -941,8 +1145,75 @@ export const unlockCallAction = createServerFn({ method: "POST" })
       return { status: "unlocked" as const, unlockId: existingUnlock?.id ?? call.id };
     }
 
-    if (data.txHash) {
-      throw new Error("Paid call unlocks are granted only after Circle payment confirmation");
+    if (data.txHash && !data.payerAddress) {
+      throw new Error("Payer wallet address is required for on-chain call unlocks");
+    }
+
+    if (data.txHash && data.payerAddress) {
+      const contracts = getProtocolContracts();
+      if (!contracts.callAccess) throw new Error("Call access contract address is not configured");
+
+      const receipt = await arcPublicClient.getTransactionReceipt({
+        hash: data.txHash as `0x${string}`,
+      });
+      if (receipt.status !== "success") throw new Error("Unlock transaction was not successful");
+
+      const hasAccess = await arcPublicClient.readContract({
+        address: contracts.callAccess as `0x${string}`,
+        abi: sentraCallAccessAbi,
+        functionName: "hasAccess",
+        args: [callAccessId(call.id), data.payerAddress as `0x${string}`],
+      });
+      if (!hasAccess) throw new Error("Call access was not recorded on-chain");
+
+      const { data: tx, error: txError } = await supabaseAdmin
+        .from("circle_transactions")
+        .upsert(
+          {
+            user_id: userId,
+            agent_id: call.agent_id,
+            kind: "transfer",
+            circle_tx_id: `wallet:${data.txHash.toLowerCase()}`,
+            amount_usdc: price,
+            status: "confirmed",
+            raw: {
+              callId: call.id,
+              paymentSource: data.paymentSource,
+              callAccess: contracts.callAccess,
+              usdcAddress: ARC_USDC_ADDRESS,
+              payerAddress: data.payerAddress,
+              txHash: data.txHash,
+              source: "wallet",
+            } as Json,
+          },
+          { onConflict: "circle_tx_id" },
+        )
+        .select("*")
+        .single();
+      if (txError) throw txError;
+
+      const { data: unlock, error: unlockError } = await supabaseAdmin
+        .from("call_unlocks")
+        .upsert(
+          {
+            call_id: call.id,
+            user_id: userId,
+            amount_paid_usdc: price,
+            tx_hash: data.txHash,
+          },
+          { onConflict: "user_id,call_id" },
+        )
+        .select("*")
+        .single();
+      if (unlockError) throw unlockError;
+
+      await audit("call.unlocked_onchain", {
+        actorId: userId,
+        table: "call_unlocks",
+        recordId: unlock.id,
+        data: { unlock, transaction: tx },
+      });
+      return { status: "unlocked" as const, unlockId: unlock.id };
     }
 
     const contracts = getProtocolContracts();

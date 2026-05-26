@@ -10,6 +10,7 @@ export type Strategy = Exclude<AgentStrategy, "Custom">;
 export interface Agent {
   id: string;
   databaseId: string;
+  registryAgentId: `0x${string}` | null;
   name: string;
   strategy: Strategy;
   description: string;
@@ -67,6 +68,7 @@ export interface Prediction {
 
 export interface EarningsCall {
   id: string;
+  callAccessId: `0x${string}`;
   agentId: string;
   date: string;
   durationSeconds: number;
@@ -164,7 +166,7 @@ function fallbackAddress(address: string | null | undefined): Address {
 }
 
 function agentIdBytes(agent: Tables<"agents">) {
-  const raw = agent.metadata_hash ?? "";
+  const raw = agent.registry_agent_id ?? agent.metadata_hash ?? "";
   if (raw.startsWith("0x") && raw.length === 66) return raw as `0x${string}`;
   return null;
 }
@@ -226,6 +228,7 @@ function mapAgent(
   return {
     id: agent.slug,
     databaseId: agent.id,
+    registryAgentId: agentIdBytes(agent),
     name: agent.name,
     strategy: isStrategy(agent.strategy) ? agent.strategy : "Macro",
     description: agent.description ?? "No public strategy description has been published yet.",
@@ -298,10 +301,15 @@ function callPrice(price: string | number | null | undefined, isFreePreview: boo
   return parsed > 0 ? parsed : 0.01;
 }
 
+function callAccessId(callId: string) {
+  return `0x${callId.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
+}
+
 function mapFullCall(call: Tables<"earnings_calls">): EarningsCall {
   const subscriptionCost = callPrice(call.price_usdc, call.is_free_preview);
   return {
     id: call.id,
+    callAccessId: callAccessId(call.id),
     agentId: call.agent_id,
     date: call.call_date,
     durationSeconds: call.duration_seconds ?? 0,
@@ -329,6 +337,7 @@ function mapPreviewCall(
   const locked = !preview.is_free_preview && subscriptionCost > 0;
   return {
     id: preview.call_id,
+    callAccessId: callAccessId(preview.call_id),
     agentId: preview.agent_id,
     date: preview.call_date,
     durationSeconds: preview.duration_seconds ?? 0,

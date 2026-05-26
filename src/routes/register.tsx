@@ -1,14 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { parseUnits, type Address } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
 import { ChevronDown, Check, Shield, Wallet, KeyRound, Radio } from "lucide-react";
 import { useToast } from "@/lib/toast";
 import { ARC_ERC8004_REGISTRIES, ARC_GATEWAY } from "@/lib/arcTestnet";
 import {
   createAgentWalletAction,
+  recordAgentOnchainDeploymentAction,
   registerAgentAction,
-  registerErc8004IdentityAction,
 } from "@/lib/sentraActions";
 import { useAuth } from "@/lib/auth";
+import { useWallet } from "@/lib/wallet";
+import {
+  erc20ApprovalAbi,
+  sentraAgentRegistryAbi,
+  sentraProtocolContracts,
+  sentraStakeVaultAbi,
+} from "@/contracts/sentraProtocol";
 
 export const Route = createFileRoute("/register")({
   head: () => ({ meta: [{ title: "Register Agent — SENTRA" }] }),
@@ -22,6 +31,9 @@ type Strategy = (typeof strategies)[number];
 function Register() {
   const toast = useToast();
   const { session } = useAuth();
+  const wallet = useWallet();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [strategy, setStrategy] = useState<Strategy>("Macro");
@@ -41,6 +53,7 @@ function Register() {
   const [deployed, setDeployed] = useState(false);
   const [deployedSlug, setDeployedSlug] = useState<string | null>(null);
   const [deployMessage, setDeployMessage] = useState<string>("");
+  const [deployStage, setDeployStage] = useState<string>("");
 
   const authHeaders = session?.access_token
     ? { authorization: `Bearer ${session.access_token}` }
@@ -49,6 +62,15 @@ function Register() {
   const deploy = async () => {
     if (!authHeaders) {
       toast.push("Sign in before registering an agent");
+      return;
+    }
+    if (!wallet.connected || !wallet.address) {
+      toast.push("Connect and sign in with a wallet before deploying an agent");
+      return;
+    }
+    if (!wallet.chainOk) {
+      wallet.switchToArc();
+      toast.push("Switch to Arc Testnet, then deploy the agent");
       return;
     }
     if (!name.trim()) {
@@ -78,30 +100,87 @@ function Register() {
         },
         headers: authHeaders,
       });
-      const wallet = await createAgentWalletAction({
+      const agentWallet = await createAgentWalletAction({
         data: { agentId: registered.agentId },
         headers: authHeaders,
       });
 
-      if (wallet.status === "ready") {
-        await registerErc8004IdentityAction({
-          data: { agentId: registered.agentId },
-          headers: authHeaders,
-        });
+      if (agentWallet.status !== "ready") {
+        setDeployedSlug(registered.slug);
+        setDeployMessage(
+          `Agent draft saved. Add ${agentWallet.missing.join(", ")} to create the Circle treasury.`,
+        );
+        setDeployed(true);
+        toast.push(`Agent ${name || "Untitled"} saved as draft`);
+        return;
       }
 
+      const stakeUnits = parseUnits(stake.toFixed(6), 6);
+      const capUnits = parseUnits((publicDel ? cap : 0).toFixed(6), 6);
+      const registryAgentId = registered.registryAgentId as `0x${string}`;
+
+      setDeployStage("Registering agent on Arc");
+      const registryTxHash = await writeContractAsync({
+        address: sentraProtocolContracts.agentRegistry as Address,
+        abi: sentraAgentRegistryAbi,
+        functionName: "registerAgent",
+        args: [
+          {
+            agentId: registryAgentId,
+            wallet: agentWallet.address as Address,
+            arcErc8004Id: BigInt(registered.arcErc8004Id),
+            metadataHash: registered.metadataHash as `0x${string}`,
+            strategyHash: registered.strategyHash as `0x${string}`,
+            riskHash: registered.riskHash as `0x${string}`,
+            predictionKeyHash: registered.predictionKeyHash as `0x${string}`,
+            stakeRequirement: stakeUnits,
+            delegationCap: capUnits,
+          },
+        ],
+      });
+      await publicClient?.waitForTransactionReceipt({ hash: registryTxHash });
+
+      let stakeTxHash: `0x${string}` | undefined;
+      if (stakeUnits > 0n) {
+        setDeployStage("Approving stake USDC");
+        const approvalHash = await writeContractAsync({
+          address: sentraProtocolContracts.usdc as Address,
+          abi: erc20ApprovalAbi,
+          functionName: "approve",
+          args: [sentraProtocolContracts.stakeVault as Address, stakeUnits],
+        });
+        await publicClient?.waitForTransactionReceipt({ hash: approvalHash });
+
+        setDeployStage("Depositing stake");
+        stakeTxHash = await writeContractAsync({
+          address: sentraProtocolContracts.stakeVault as Address,
+          abi: sentraStakeVaultAbi,
+          functionName: "depositStake",
+          args: [registryAgentId, stakeUnits],
+        });
+        await publicClient?.waitForTransactionReceipt({ hash: stakeTxHash });
+      }
+
+      await recordAgentOnchainDeploymentAction({
+        data: {
+          agentId: registered.agentId,
+          arcErc8004Id: registered.arcErc8004Id,
+          registryTxHash,
+          stakeTxHash,
+          stakeUsdc: stake,
+        },
+        headers: authHeaders,
+      });
+
       setDeployedSlug(registered.slug);
-      setDeployMessage(
-        wallet.status === "ready"
-          ? "Agent draft, Circle treasury, and ERC-8004 registration transaction were submitted."
-          : `Agent draft saved. Add ${wallet.missing.join(", ")} to create the Circle treasury and ERC-8004 identity.`,
-      );
+      setDeployMessage("Agent, treasury, registry record, and stake are live on Arc Testnet.");
       setDeployed(true);
       toast.push(`Agent ${name || "Untitled"} registered`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Agent registration failed";
       toast.push(message);
     } finally {
+      setDeployStage("");
       setDeploying(false);
     }
   };
@@ -368,7 +447,7 @@ function Register() {
                   {deploying ? (
                     <span className="inline-flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full bg-primary-foreground animate-pulse" />
-                      Deploying to Arc…
+                      {deployStage || "Deploying to Arc..."}
                     </span>
                   ) : (
                     "Deploy Agent"

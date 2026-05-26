@@ -6,6 +6,19 @@ export const sentraProtocolContracts = {
   usdc: ARC_USDC_ADDRESS,
 } as const;
 
+export const erc20ApprovalAbi = [
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
 export const sentraAgentRegistryAbi = [
   {
     type: "function",
@@ -78,6 +91,43 @@ export const sentraDelegationVaultAbi = [
       { name: "agentId", type: "bytes32" },
       { name: "amount", type: "uint256" },
     ],
+    outputs: [],
+  },
+] as const;
+
+export const sentraCallAccessAbi = [
+  {
+    type: "function",
+    name: "priceByCall",
+    stateMutability: "view",
+    inputs: [{ name: "callId", type: "bytes32" }],
+    outputs: [{ name: "price", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "hasAccess",
+    stateMutability: "view",
+    inputs: [
+      { name: "callId", type: "bytes32" },
+      { name: "subscriber", type: "address" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "setCallPrice",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "callId", type: "bytes32" },
+      { name: "price", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "unlock",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "callId", type: "bytes32" }],
     outputs: [],
   },
 ] as const;

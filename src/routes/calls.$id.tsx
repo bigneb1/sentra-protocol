@@ -2,13 +2,25 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowLeft, Lock, Pause, Play, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { type Address, parseUnits } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { Waveform } from "@/components/sentra/Waveform";
 import { useCallPlayback } from "@/lib/callPlayback";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
-import { getUnlockedCallAction, unlockCallAction } from "@/lib/sentraActions";
+import {
+  getUnlockedCallAction,
+  prepareCallUnlockAction,
+  unlockCallAction,
+} from "@/lib/sentraActions";
 import { getAgent, getCall, loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
+import { useWallet } from "@/lib/wallet";
+import {
+  erc20ApprovalAbi,
+  sentraCallAccessAbi,
+  sentraProtocolContracts,
+} from "@/contracts/sentraProtocol";
 
 export const Route = createFileRoute("/calls/$id")({
   loader: async ({ params }) => {
@@ -39,9 +51,12 @@ function CallDetail() {
     canPlay ? activeCall.transcript : "",
     canPlay ? activeCall.audioUrl : null,
   );
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"pricing" | "approve" | "unlock" | "confirm" | null>(null);
   const { session } = useAuth();
   const toast = useToast();
+  const wallet = useWallet();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
   const authHeaders = session?.access_token
     ? { authorization: `Bearer ${session.access_token}` }
     : undefined;
@@ -72,22 +87,94 @@ function CallDetail() {
       toast.push("Sign in before unlocking this call");
       return;
     }
-    setBusy(true);
+    if (!activeCall.isFreePreview && (!wallet.connected || !wallet.address)) {
+      toast.push("Connect and sign in with a wallet before unlocking paid calls");
+      return;
+    }
+    if (!activeCall.isFreePreview && !wallet.chainOk) {
+      wallet.switchToArc();
+      toast.push("Switch to Arc Testnet, then unlock the call");
+      return;
+    }
+    const payerAddress = wallet.address ?? undefined;
     try {
+      if (activeCall.isFreePreview) {
+        setBusy("confirm");
+        const result = await unlockCallAction({
+          data: { callId: activeCall.id, paymentSource: "free" },
+          headers: authHeaders,
+        });
+        if (result.status === "unlocked") {
+          await loadFullCall();
+          toast.push("Call unlocked");
+        }
+        return;
+      }
+
+      setBusy("pricing");
+      const prepared = await prepareCallUnlockAction({
+        data: { callId: activeCall.id },
+        headers: authHeaders,
+      });
+
+      if (prepared.status === "needs_owner_pricing") {
+        toast.push(
+          `Call needs on-chain pricing. Add ${prepared.missingEnv.join(", ")} to Vercel or price it from the protocol owner wallet.`,
+        );
+        return;
+      }
+      if (prepared.status === "free") {
+        await loadFullCall();
+        toast.push("Call unlocked");
+        return;
+      }
+      if (!sentraProtocolContracts.callAccess) {
+        toast.push("Call access contract address is not configured");
+        return;
+      }
+
+      const callAccess = prepared.callAccess as Address;
+      const amountUnits = parseUnits(activeCall.subscriptionCost.toFixed(6), 6);
+      setBusy("approve");
+      const approvalHash = await writeContractAsync({
+        address: sentraProtocolContracts.usdc as Address,
+        abi: erc20ApprovalAbi,
+        functionName: "approve",
+        args: [callAccess, amountUnits],
+      });
+      toast.push("USDC approval submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: approvalHash });
+
+      setBusy("unlock");
+      const unlockHash = await writeContractAsync({
+        address: callAccess,
+        abi: sentraCallAccessAbi,
+        functionName: "unlock",
+        args: [prepared.callAccessId],
+      });
+      toast.push("Call unlock transaction submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: unlockHash });
+
+      setBusy("confirm");
       const result = await unlockCallAction({
-        data: { callId: activeCall.id, paymentSource: activeCall.isFreePreview ? "free" : "usdc" },
+        data: {
+          callId: activeCall.id,
+          paymentSource: "usdc",
+          txHash: unlockHash,
+          payerAddress,
+        },
         headers: authHeaders,
       });
       if (result.status === "unlocked") {
         await loadFullCall();
         toast.push("Call unlocked");
       } else {
-        toast.push(`Payment intent queued for ${result.amountUsdc.toFixed(2)} USDC`);
+        toast.push("Unlock submitted, waiting for confirmation");
       }
     } catch (error) {
       toast.push(error instanceof Error ? error.message : "Unable to unlock call");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -161,10 +248,19 @@ function CallDetail() {
             {!canPlay && activeCall.locked && (
               <button
                 onClick={unlock}
-                disabled={busy}
+                disabled={busy !== null}
                 className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] disabled:opacity-50"
               >
-                <Lock size={14} /> Unlock full call for 0.01 USDC
+                <Lock size={14} />{" "}
+                {busy === "pricing"
+                  ? "Preparing..."
+                  : busy === "approve"
+                    ? "Approving..."
+                    : busy === "unlock"
+                      ? "Unlocking..."
+                      : busy === "confirm"
+                        ? "Confirming..."
+                        : "Unlock full call for 0.01 USDC"}
               </button>
             )}
           </section>

@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { parseUnits, type Address } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
 import { Wallet, ArrowRight, Check, Layers } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { loadSentraDataset } from "@/lib/sentraData";
@@ -7,6 +9,11 @@ import { createDelegationIntentAction, createWithdrawalIntentAction } from "@/li
 import { useWallet } from "@/lib/wallet";
 import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth";
+import {
+  erc20ApprovalAbi,
+  sentraDelegationVaultAbi,
+  sentraProtocolContracts,
+} from "@/contracts/sentraProtocol";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 
@@ -27,14 +34,18 @@ export const Route = createFileRoute("/delegate")({
 function Delegate() {
   const dataset = Route.useLoaderData();
   const { agents, delegations } = dataset;
-  const { connected, balance } = useWallet();
+  const wallet = useWallet();
   const { session } = useAuth();
   const toast = useToast();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
 
   const [step, setStep] = useState(1);
   const [amount, setAmount] = useState(50);
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [confetti, setConfetti] = useState(false);
+  const [busy, setBusy] = useState<"approve" | "delegate" | null>(null);
+  const [lastTxHash, setLastTxHash] = useState<`0x${string}` | null>(null);
 
   const selected = agents.find((a) => a.id === agentId) ?? agents[0];
   const estReturn = selected ? (amount * selected.sharpeRatio * 0.08).toFixed(2) : "0.00";
@@ -48,7 +59,7 @@ function Delegate() {
     };
   });
 
-  if (!connected) {
+  if (!wallet.connected) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center px-6">
         <div className="sentra-card bracket p-10 text-center max-w-md">
@@ -82,21 +93,60 @@ function Delegate() {
       toast.push("Sign in before creating a delegation intent");
       return;
     }
+    if (!wallet.chainOk) {
+      wallet.switchToArc();
+      toast.push("Switch to Arc Testnet, then confirm the delegation");
+      return;
+    }
+    if (!selected.registryAgentId) {
+      toast.push("This agent is missing its on-chain registry id");
+      return;
+    }
+    if (!sentraProtocolContracts.delegationVault) {
+      toast.push("Delegation vault address is not configured");
+      return;
+    }
     setConfetti(true);
     try {
+      const vault = sentraProtocolContracts.delegationVault as Address;
+      const amountUnits = parseUnits(amount.toFixed(6), 6);
+      setBusy("approve");
+      const approvalHash = await writeContractAsync({
+        address: sentraProtocolContracts.usdc as Address,
+        abi: erc20ApprovalAbi,
+        functionName: "approve",
+        args: [vault, amountUnits],
+      });
+      toast.push("USDC approval submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: approvalHash });
+
+      setBusy("delegate");
+      const delegateHash = await writeContractAsync({
+        address: vault,
+        abi: sentraDelegationVaultAbi,
+        functionName: "delegate",
+        args: [selected.registryAgentId, amountUnits],
+      });
+      toast.push("Delegation transaction submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: delegateHash });
+
       await createDelegationIntentAction({
         data: {
           agentId: selected.databaseId,
           amountUsdc: amount,
+          delegatorAddress: wallet.address ?? undefined,
+          txHash: delegateHash,
         },
         headers: authHeaders,
       });
-      toast.push(`Delegation intent queued for ${amount} USDC to ${selected.name}`);
+      setLastTxHash(delegateHash);
+      toast.push(`Delegated ${amount} USDC to ${selected.name}`);
       next();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Delegation intent failed";
+      const message = error instanceof Error ? error.message : "Delegation failed";
       toast.push(message);
     } finally {
+      setBusy(null);
       setTimeout(() => setConfetti(false), 2800);
     }
   };
@@ -249,7 +299,10 @@ function Delegate() {
                 </div>
                 <h3 className="font-mono text-xl">Delegation submitted</h3>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Tx <span className="font-mono">0xab12…ef89</span>
+                  Tx{" "}
+                  <span className="font-mono">
+                    {lastTxHash ? `${lastTxHash.slice(0, 8)}...${lastTxHash.slice(-6)}` : "pending"}
+                  </span>
                 </p>
                 <Link
                   to="/portfolio"
@@ -279,10 +332,14 @@ function Delegate() {
                 ) : (
                   <button
                     onClick={finish}
-                    disabled={!selected}
+                    disabled={!selected || busy !== null}
                     className="px-5 py-2 rounded bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm"
                   >
-                    Confirm Delegation
+                    {busy === "approve"
+                      ? "Approving USDC..."
+                      : busy === "delegate"
+                        ? "Delegating..."
+                        : "Confirm Delegation"}
                   </button>
                 )}
               </div>
@@ -346,7 +403,7 @@ function Delegate() {
         <div className="space-y-5">
           <div className="sentra-card p-5">
             <div className="text-xs text-muted-foreground">Available USDC</div>
-            <div className="font-mono text-3xl mt-1">${balance.toFixed(2)}</div>
+            <div className="font-mono text-3xl mt-1">${wallet.balance.toFixed(2)}</div>
             <div className="text-[11px] text-muted-foreground mt-1">via Circle on Arc</div>
           </div>
           <div className="sentra-card p-5">
