@@ -17,9 +17,9 @@ import {
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { Waveform } from "@/components/sentra/Waveform";
 import { useToast } from "@/lib/toast";
-import { useAuth } from "@/lib/auth";
 import { useCallPlayback } from "@/lib/callPlayback";
 import { useWallet } from "@/lib/wallet";
+import { walletSessionHeaders } from "@/lib/walletSession";
 import {
   erc20ApprovalAbi,
   sentraCallAccessAbi,
@@ -44,7 +44,6 @@ function Calls() {
   const dataset = Route.useLoaderData() as SentraDataset;
   const { agents, earningsCalls } = dataset;
   const toast = useToast();
-  const { session } = useAuth();
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState("");
   const [bannerOpen, setBannerOpen] = useState(true);
@@ -53,9 +52,6 @@ function Calls() {
       (agentFilter === "all" || c.agentId === agentFilter) &&
       (!dateFilter || c.date.slice(0, 10) === dateFilter),
   );
-  const authHeaders = session?.access_token
-    ? { authorization: `Bearer ${session.access_token}` }
-    : undefined;
 
   return (
     <div className="px-6 md:px-10 py-8 max-w-[1100px] mx-auto">
@@ -120,7 +116,7 @@ function Calls() {
 
       <div className="space-y-4">
         {filtered.map((c) => (
-          <CallRow key={c.id} call={c} dataset={dataset} authHeaders={authHeaders} />
+          <CallRow key={c.id} call={c} dataset={dataset} />
         ))}
         {filtered.length === 0 && (
           <div className="sentra-card p-10 text-center">
@@ -135,15 +131,7 @@ function Calls() {
   );
 }
 
-function CallRow({
-  call,
-  dataset,
-  authHeaders,
-}: {
-  call: EarningsCall;
-  dataset: SentraDataset;
-  authHeaders?: HeadersInit;
-}) {
+function CallRow({ call, dataset }: { call: EarningsCall; dataset: SentraDataset }) {
   const agent = getAgent(dataset, call.agentId);
   const [activeCall, setActiveCall] = useState(call);
   const [unlocked, setUnlocked] = useState(call.fullContentAvailable || !call.locked);
@@ -162,6 +150,7 @@ function CallRow({
 
   const loadFullCall = async () => {
     try {
+      const authHeaders = walletSessionHeaders(wallet.address);
       const full = await getUnlockedCallAction({
         data: { callId: activeCall.id },
         headers: authHeaders,
@@ -195,8 +184,9 @@ function CallRow({
   };
 
   const unlock = async () => {
+    const authHeaders = walletSessionHeaders(wallet.address);
     if (!authHeaders) {
-      toast.push("Sign in before unlocking call archives");
+      toast.push("Open Sign in and sign the wallet message before unlocking calls");
       return;
     }
     if (!activeCall.isFreePreview && (!wallet.connected || !wallet.address)) {

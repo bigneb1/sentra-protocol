@@ -11,8 +11,8 @@ import {
   recordAgentOnchainDeploymentAction,
   registerAgentAction,
 } from "@/lib/sentraActions";
-import { useAuth } from "@/lib/auth";
 import { useWallet } from "@/lib/wallet";
+import { walletSessionHeaders } from "@/lib/walletSession";
 import {
   erc20ApprovalAbi,
   sentraAgentRegistryAbi,
@@ -57,7 +57,6 @@ function extractErc8004TokenId(receipt: TransactionReceipt, ownerAddress: string
 
 function Register() {
   const toast = useToast();
-  const { session } = useAuth();
   const wallet = useWallet();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -82,13 +81,10 @@ function Register() {
   const [deployMessage, setDeployMessage] = useState<string>("");
   const [deployStage, setDeployStage] = useState<string>("");
 
-  const authHeaders = session?.access_token
-    ? { authorization: `Bearer ${session.access_token}` }
-    : undefined;
-
   const deploy = async () => {
+    const authHeaders = walletSessionHeaders(wallet.address);
     if (!authHeaders) {
-      toast.push("Sign in before registering an agent");
+      toast.push("Open Sign in and sign the wallet message before registering an agent");
       return;
     }
     if (!wallet.connected || !wallet.address) {

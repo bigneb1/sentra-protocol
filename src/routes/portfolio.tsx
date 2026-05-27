@@ -6,7 +6,7 @@ import { loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
 import { createWithdrawalIntentAction } from "@/lib/sentraActions";
 import { useWallet } from "@/lib/wallet";
 import { useToast } from "@/lib/toast";
-import { useAuth } from "@/lib/auth";
+import { walletSessionHeaders } from "@/lib/walletSession";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { BrierBadge } from "@/components/sentra/BrierBadge";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
@@ -30,15 +30,14 @@ function Portfolio() {
     delegations: allocs,
     vaultTransactions: txs,
   } = Route.useLoaderData() as SentraDataset;
-  const { connected } = useWallet();
-  const { session } = useAuth();
+  const wallet = useWallet();
   const toast = useToast();
   const [followed, setFollowed] = useState<string[]>([]);
   useEffect(() => {
     setFollowed(JSON.parse(localStorage.getItem("sentra_follows") || "[]"));
   }, []);
 
-  if (!connected) {
+  if (!wallet.connected) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center px-6">
         <div className="sentra-card bracket p-10 text-center max-w-md">
@@ -62,13 +61,10 @@ function Portfolio() {
   const delta = total - cost;
   const followedAgents = agents.filter((a) => followed.includes(a.id));
   const series = portfolioSeries(total);
-  const authHeaders = session?.access_token
-    ? { authorization: `Bearer ${session.access_token}` }
-    : undefined;
-
   const requestWithdrawal = async (delegationId: string, agentName: string, amountUsdc: number) => {
+    const authHeaders = walletSessionHeaders(wallet.address);
     if (!authHeaders) {
-      toast.push("Sign in before creating a withdrawal intent");
+      toast.push("Open Sign in and sign the wallet message before withdrawing");
       return;
     }
     try {

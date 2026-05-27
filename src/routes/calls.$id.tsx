@@ -7,7 +7,6 @@ import { usePublicClient, useWriteContract } from "wagmi";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { Waveform } from "@/components/sentra/Waveform";
 import { useCallPlayback } from "@/lib/callPlayback";
-import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import {
   getUnlockedCallAction,
@@ -16,6 +15,7 @@ import {
 } from "@/lib/sentraActions";
 import { getAgent, getCall, loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
 import { useWallet } from "@/lib/wallet";
+import { walletSessionHeaders } from "@/lib/walletSession";
 import {
   erc20ApprovalAbi,
   sentraCallAccessAbi,
@@ -52,16 +52,13 @@ function CallDetail() {
     canPlay ? activeCall.audioUrl : null,
   );
   const [busy, setBusy] = useState<"pricing" | "approve" | "unlock" | "confirm" | null>(null);
-  const { session } = useAuth();
   const toast = useToast();
   const wallet = useWallet();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
-  const authHeaders = session?.access_token
-    ? { authorization: `Bearer ${session.access_token}` }
-    : undefined;
 
   const loadFullCall = async () => {
+    const authHeaders = walletSessionHeaders(wallet.address);
     const full = await getUnlockedCallAction({
       data: { callId: activeCall.id },
       headers: authHeaders,
@@ -83,8 +80,9 @@ function CallDetail() {
   };
 
   const unlock = async () => {
+    const authHeaders = walletSessionHeaders(wallet.address);
     if (!authHeaders) {
-      toast.push("Sign in before unlocking this call");
+      toast.push("Open Sign in and sign the wallet message before unlocking this call");
       return;
     }
     if (!activeCall.isFreePreview && (!wallet.connected || !wallet.address)) {
@@ -227,7 +225,16 @@ function CallDetail() {
           <div className="mt-6 sentra-card !shadow-none p-4">
             <div className="flex items-center gap-4">
               <button
-                onClick={playback.toggle}
+                onClick={() => {
+                  if (!canPlay) {
+                    toast.push("Unlock this call before playback");
+                    return;
+                  }
+                  playback.toggle();
+                  if (!playback.supported) {
+                    toast.push("Audio playback is not supported in this browser");
+                  }
+                }}
                 disabled={!canPlay && activeCall.locked}
                 aria-label={playback.playing ? "Pause earnings call" : "Play earnings call"}
                 className="w-11 h-11 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed"

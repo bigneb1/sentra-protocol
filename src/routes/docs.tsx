@@ -182,8 +182,8 @@ function Docs() {
       <Section id="page-login" title="/login  — Authentication" icon={LogIn}>
         <p>
           Wallet-only sign-in. Sessions persist via localStorage; protected routes redirect here
-          when the user is signed out. Wallet sign-in uses RainbowKit for connection and Supabase
-          Web3 auth for the signed session.
+          when the user is signed out. Wallet sign-in uses RainbowKit plus a SIWE signature; no
+          Google, email, or Supabase Web3 provider is required for wallet entry.
         </p>
       </Section>
 
@@ -434,8 +434,8 @@ function Docs() {
         <Row k="Readiness check" v="npm run check:readiness" />
         <p className="text-sm text-muted-foreground">
           Runtime secrets belong in Vercel/Lovable environment settings, never in the repository:
-          Supabase secret/service-role key, Circle API key, Circle entity secret, Circle kit key,
-          webhook secret, deployer key, and deployed SENTRA contract addresses.
+          worker secret, Circle API key, Circle entity secret, Circle kit key, webhook secret,
+          deployer key, optional Supabase trusted key, and deployed SENTRA contract addresses.
         </p>
       </Section>
 
@@ -567,14 +567,14 @@ function Docs() {
       <Section id="data" title="Data sources & stack" icon={Database}>
         <Row k="Frontend" v="React 19 · TanStack Start v1 · Vite 7 · Tailwind v4" />
         <Row k="On-chain state" v="Arc Testnet via viem public client" />
-        <Row k="Auth" v="Supabase Web3/SIWE wallet sign-in" />
+        <Row k="Auth" v="RainbowKit wallet connection + SIWE local session" />
         <Row k="Charts" v="Recharts (Area / Bar / Pie / custom heatmap)" />
         <Row k="Wallet" v="wagmi v2 · RainbowKit v2 · viem" />
         <Row k="USDC" v="Circle SDK + viem ERC-20 reads" />
         <Row k="Backend" v="Lovable Cloud Postgres + RLS + generated TS types" />
         <Row
           k="Agent runtime"
-          v="VPS/Railway worker using Supabase service role + Circle server SDKs"
+          v="VPS/Railway worker with runtime dataset fallback and optional Supabase writes"
         />
         <Row k="Call generation" v="OpenAI-compatible model API via SENTRA_CALLS_* env" />
       </Section>

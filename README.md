@@ -49,12 +49,13 @@ The marketplace has three participants:
 Browser
   React 19 + TanStack Start + RainbowKit
   Arc reads through viem
-  Supabase auth session
+  Wallet-only SIWE session stored locally
   Call audio or browser speech synthesis
 
 Server functions
   TanStack createServerFn
-  Supabase service-role writes
+  Optional Supabase trusted writes when a server key is available
+  VPS runtime fallback for wallet-created agents, delegations, and calls
   Circle developer-controlled wallets
   Circle Smart Contract Platform
   Circle App Kit / Gateway payment intents
@@ -67,7 +68,7 @@ Arc Testnet
 Agent worker
   Runs on VPS, Railway, Fly.io, or similar
   Fetches data, generates predictions/calls, signs payloads
-  Publishes to Supabase/server functions
+  Publishes to Supabase or the SENTRA runtime dataset service
 ```
 
 Agents should not run in the browser. The frontend is the marketplace, wallet UI, and analytics surface. Model loops, signing keys, Circle API keys, and scheduled call generation belong in a backend worker.
@@ -81,7 +82,7 @@ Agents should not run in the browser. The frontend is the marketplace, wallet UI
 | Wallet UI  | wagmi v2, RainbowKit v2, viem                                                                                            |
 | Chain      | Arc Testnet, chain ID `5042002`                                                                                          |
 | Settlement | Circle USDC on Arc                                                                                                       |
-| Backend    | Supabase/Lovable Cloud Postgres, Auth, RLS                                                                               |
+| Backend    | Supabase/Lovable Cloud Postgres and RLS, plus VPS runtime fallback                                                       |
 | Circle     | App Kit, viem adapter, Circle Wallets adapter, Developer-Controlled Wallets, Smart Contract Platform, x402 batching, W3S |
 | Contracts  | Solidity 0.8.28, Hardhat, OpenZeppelin                                                                                   |
 | Deployment | Vercel via Nitro Vercel preset; worker build still available through the default Vite config                             |
@@ -110,33 +111,32 @@ Use `.env.arc.example` as the non-secret template. Do not commit real keys.
 
 Required for a live product runtime:
 
-| Variable                                  | Scope         | Purpose                                          |
-| ----------------------------------------- | ------------- | ------------------------------------------------ |
-| `SUPABASE_URL`                            | server        | Supabase project URL                             |
-| `SUPABASE_PUBLISHABLE_KEY`                | server/client | Supabase anon/publishable key                    |
-| `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY` | server only | Server-side trusted Supabase operations          |
-| `VITE_SUPABASE_URL`                       | client        | Browser Supabase client                          |
-| `VITE_SUPABASE_PUBLISHABLE_KEY`           | client        | Browser Supabase auth/client                     |
-| `VITE_ARC_RPC_URL`                        | client        | Arc RPC override                                 |
-| `ARC_TESTNET_RPC_URL`                     | server        | Hardhat/readiness RPC                            |
-| `ARC_TESTNET_DEPLOYER_PRIVATE_KEY`        | deploy only   | Contract deployment key                          |
-| `SENTRA_PROTOCOL_OWNER_PRIVATE_KEY`       | server only   | Optional owner key for pricing paid calls        |
-| `CIRCLE_API_KEY`                          | server only   | Circle Wallets/Contracts APIs                    |
-| `ENTITY_SECRET` or `CIRCLE_ENTITY_SECRET` | server only   | Circle developer-controlled wallet entity secret |
-| `CIRCLE_AGENT_WALLET_SET_ID`              | server only   | Optional existing wallet set                     |
-| `CIRCLE_ARC_TESTNET_AGENT_WALLET_ADDRESS` | server/public | Circle CLI Arc Testnet agent wallet address      |
-| `CIRCLE_BASE_AGENT_WALLET_ADDRESS`        | server/public | Circle CLI Base agent wallet address             |
-| `CIRCLE_WEBHOOK_SECRET`                   | server only   | Shared secret for webhook route                  |
-| `CIRCLE_KIT_KEY` or `KIT_KEY`             | server only   | Circle App Kit / Swap Kit operations             |
-| `SENTRA_CALLS_API_KEY`                    | server only   | Model API key for generated earnings calls       |
-| `SENTRA_CALLS_API_BASE_URL`               | server only   | OpenAI-compatible model API base URL             |
-| `SENTRA_CALLS_MODEL`                      | server only   | Model name for generated earnings calls          |
-| `SENTRA_AGENT_WORKER_SECRET`              | server only   | Shared secret for `/api/agent-worker`            |
-| `SENTRA_AGENT_WORKER_INTERVAL_MS`         | worker        | Poll interval for the VPS/Railway agent worker   |
-| `VITE_CIRCLE_CLIENT_KEY`                  | client        | Circle Modular Wallets client key                |
-| `VITE_CIRCLE_APP_ID`                      | client        | Circle W3S app ID, if using W3S                  |
-| `VITE_WALLETCONNECT_PROJECT_ID`           | client        | WalletConnect support                            |
-| `VITE_SENTRA_*_ADDRESS`                   | client/server | Deployed SENTRA contract addresses               |
+| Variable                                             | Scope         | Purpose                                          |
+| ---------------------------------------------------- | ------------- | ------------------------------------------------ |
+| `SENTRA_AGENT_RUNTIME_URL`                           | server        | Public or private runtime dataset URL            |
+| `SENTRA_AGENT_WORKER_SECRET`                         | server/worker | Shared secret for runtime write endpoints        |
+| `SUPABASE_URL`                                       | server        | Optional Supabase project URL                    |
+| `SUPABASE_PUBLISHABLE_KEY`                           | server/client | Optional Supabase anon/publishable key           |
+| `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY` | server only   | Optional trusted Supabase operations             |
+| `VITE_SUPABASE_URL`                                  | client        | Optional browser Supabase read client            |
+| `VITE_SUPABASE_PUBLISHABLE_KEY`                      | client        | Optional browser Supabase publishable key        |
+| `VITE_ARC_RPC_URL`                                   | client        | Arc RPC override                                 |
+| `ARC_TESTNET_RPC_URL`                                | server        | Hardhat/readiness RPC                            |
+| `ARC_TESTNET_DEPLOYER_PRIVATE_KEY`                   | deploy only   | Contract deployment key                          |
+| `SENTRA_PROTOCOL_OWNER_PRIVATE_KEY`                  | server only   | Optional owner key for pricing paid calls        |
+| `CIRCLE_API_KEY`                                     | server only   | Circle Wallets/Contracts APIs                    |
+| `ENTITY_SECRET` or `CIRCLE_ENTITY_SECRET`            | server only   | Circle developer-controlled wallet entity secret |
+| `CIRCLE_AGENT_WALLET_SET_ID`                         | server only   | Optional existing wallet set                     |
+| `CIRCLE_ARC_TESTNET_AGENT_WALLET_ADDRESS`            | server/public | Circle CLI Arc Testnet agent wallet address      |
+| `CIRCLE_BASE_AGENT_WALLET_ADDRESS`                   | server/public | Circle CLI Base agent wallet address             |
+| `CIRCLE_WEBHOOK_SECRET`                              | server only   | Shared secret for webhook route                  |
+| `CIRCLE_KIT_KEY` or `KIT_KEY`                        | server only   | Circle App Kit / Swap Kit operations             |
+| `SENTRA_CALLS_API_KEY`                               | server only   | Model API key for generated earnings calls       |
+| `SENTRA_CALLS_API_BASE_URL`                          | server only   | OpenAI-compatible model API base URL             |
+| `SENTRA_CALLS_MODEL`                                 | server only   | Model name for generated earnings calls          |
+| `SENTRA_AGENT_WORKER_INTERVAL_MS`                    | worker        | Poll interval for the VPS/Railway agent worker   |
+| `VITE_WALLETCONNECT_PROJECT_ID`                      | client        | Optional WalletConnect support                   |
+| `VITE_SENTRA_*_ADDRESS`                              | client/server | Deployed SENTRA contract addresses               |
 
 ## Development
 
@@ -250,7 +250,7 @@ Core tables:
 - `risk_events`
 - `audit_logs`
 
-The app reads live Supabase data through `src/lib/sentraData.ts`. Static demo agent data has been removed; an empty database renders empty states instead of simulated marketplace records.
+The app reads live Supabase data through `src/lib/sentraData.ts` when Supabase is configured. If Supabase is unavailable or trusted writes are not possible, it reads the VPS runtime dataset through `SENTRA_AGENT_RUNTIME_URL` and `/api/runtime-dataset`. Static mock data is not used for persistence; runtime preview agents are served by the worker so the demo can stay usable while on-chain registration is completed.
 
 ## Circle Integration
 
@@ -305,7 +305,7 @@ Current CLI-managed agent wallet addresses:
 | Arc Testnet | `0xcd2685c1766f8b40140378900931cc1c864684fa` |
 | Base        | `0x88af79b7021150ff571e91b4500a12366ef02130` |
 
-The Arc Testnet wallet has been verified with `100 USDC` native and `100 USDC` ERC-20 balance on Circle CLI. These are operator/agent-stack wallets, not per-agent app treasury wallets. Per-agent treasury wallets are created by `npm run wallets:provision` after real agent rows exist in Supabase.
+The Arc Testnet wallet has been verified with `100 USDC` native and `100 USDC` ERC-20 balance on Circle CLI. These are operator/agent-stack wallets, not per-agent app treasury wallets. Per-agent treasury wallets are created by `npm run wallets:provision` after real agent rows exist in Supabase. When no trusted Supabase/Circle server context is available, the VPS runtime returns deterministic testnet treasury placeholders so wallet-only registration can still complete on-chain; replace those with Circle developer-controlled wallets before handling real funds.
 
 ## Agent Runtime
 
@@ -313,14 +313,27 @@ Recommended deployment: VPS or Railway worker.
 
 Worker responsibilities:
 
-- Load active agents and configs from Supabase.
+- Load active agents and configs from Supabase or the runtime state file.
 - Fetch market data, earnings data, and on-chain balances.
 - Generate high-quality prediction payloads and call transcripts with the selected model provider.
 - Sign prediction payloads with the agent signing key.
 - Call `submitPredictionAction` or an equivalent trusted server endpoint.
-- Publish calls through `publishEarningsCallAction`.
+- Publish calls through `publishEarningsCallAction` or the runtime dataset.
 - Store hosted audio URLs if using a TTS provider.
 - Reconcile Circle wallet balances, Gateway balances, and webhooks.
+
+Install the local VPS runtime service:
+
+```bash
+npm run agents:install-runtime
+```
+
+This creates or preserves `SENTRA_AGENT_WORKER_SECRET` in `.env`, installs `sentra-agent-runtime.service`, and starts the runtime on `127.0.0.1:19080`. Expose it through HTTPS if Vercel/Lovable must consume it from production, then set:
+
+```text
+SENTRA_AGENT_RUNTIME_URL=https://<your-runtime-domain>/dataset
+SENTRA_AGENT_WORKER_SECRET=<same-secret-as-the-vps>
+```
 
 Run a one-shot call generation job:
 

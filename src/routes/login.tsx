@@ -3,12 +3,11 @@ import { useState } from "react";
 import { useAccount, useChainId, useSignMessage } from "wagmi";
 import { createSiweMessage } from "viem/siwe";
 import { ArrowLeft, CheckCircle2, Loader2, Wallet } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/sentra/Logo";
 import { useToast } from "@/lib/toast";
 import { arcTestnet } from "@/lib/wagmi";
 import { truncate, useWallet } from "@/lib/wallet";
-import { siweWalletSignInAction } from "@/lib/sentraActions";
+import { writeWalletSession } from "@/lib/walletSession";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -27,14 +26,6 @@ function randomNonce() {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function walletSignInMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/web3 provider is disabled/i.test(message)) {
-    return "Supabase Web3 wallet auth is disabled and the server SIWE fallback did not complete.";
-  }
-  return message;
 }
 
 function Login() {
@@ -62,6 +53,7 @@ function Login() {
       }
 
       const now = new Date();
+      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
       const message = createSiweMessage({
         domain: window.location.host,
         address,
@@ -71,30 +63,22 @@ function Login() {
         chainId: chainId || arcTestnet.id,
         nonce: randomNonce(),
         issuedAt: now,
-        expirationTime: new Date(now.getTime() + 10 * 60 * 1000),
+        expirationTime: expiresAt,
       });
       const signature = await signMessageAsync({ message });
-      const { error } = await supabase.auth.signInWithWeb3({
-        chain: "ethereum",
+
+      writeWalletSession({
+        address,
         message,
         signature,
+        issuedAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
       });
-      if (error) {
-        if (!/web3 provider is disabled/i.test(error.message)) throw error;
-        const fallback = await siweWalletSignInAction({
-          data: { message, signature },
-        });
-        const { error: otpError } = await supabase.auth.verifyOtp({
-          email: fallback.email,
-          token: fallback.token,
-          type: "email",
-        });
-        if (otpError) throw otpError;
-      }
+
       toast.push("Wallet signed in");
       nav({ to: "/arena" });
     } catch (err: unknown) {
-      const message = walletSignInMessage(err);
+      const message = err instanceof Error ? err.message : String(err);
       toast.push(`Wallet sign-in failed: ${message}`);
     } finally {
       setBusy(null);

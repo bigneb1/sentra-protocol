@@ -13,11 +13,11 @@ import {
   LogOut,
   BookOpen,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 
 import { useWallet, truncate } from "@/lib/wallet";
-import { useAuth } from "@/lib/auth";
+import { clearWalletSession, readWalletSession } from "@/lib/walletSession";
 
 const nav = [
   { to: "/arena", label: "Arena", icon: Swords },
@@ -32,8 +32,19 @@ const nav = [
 export function AppLayout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { connected, address, balance, disconnect } = useWallet();
-  const { user, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [walletSigned, setWalletSigned] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setWalletSigned(Boolean(readWalletSession(address)));
+    sync();
+    window.addEventListener("storage", sync);
+    window.addEventListener("sentra-wallet-session", sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("sentra-wallet-session", sync);
+    };
+  }, [address]);
 
   if (path === "/login") return <Outlet />;
 
@@ -41,7 +52,11 @@ export function AppLayout() {
   if (path === "/") {
     return <Outlet />;
   }
-  const userLabel = user?.email ?? (user?.id ? user.id.slice(0, 8) : "Signed in");
+  const userLabel = address ? truncate(address) : "Wallet signed";
+  const disconnectWallet = () => {
+    clearWalletSession();
+    disconnect();
+  };
 
   return (
     <div className="min-h-screen flex bg-background text-foreground">
@@ -75,9 +90,11 @@ export function AppLayout() {
           })}
         </nav>
         <div className="p-3 border-t border-border space-y-2">
-          {user ? (
+          {walletSigned ? (
             <button
-              onClick={signOut}
+              onClick={() => {
+                clearWalletSession();
+              }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-md bg-elevated hover:bg-primary/10 text-left text-xs"
             >
               <LogOut size={14} className="text-primary-light" />
@@ -93,7 +110,7 @@ export function AppLayout() {
           )}
           {connected && address ? (
             <button
-              onClick={disconnect}
+              onClick={disconnectWallet}
               className="w-full flex items-center gap-2 px-3 py-2.5 rounded-md bg-elevated hover:bg-primary/10 transition-colors text-left"
             >
               <Wallet size={16} className="text-primary-light" />
@@ -206,7 +223,7 @@ export function AppLayout() {
                 {connected && address ? (
                   <button
                     onClick={() => {
-                      disconnect();
+                      disconnectWallet();
                       setMobileOpen(false);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2.5 rounded-md bg-elevated text-left"

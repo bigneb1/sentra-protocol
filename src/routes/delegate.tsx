@@ -8,7 +8,7 @@ import { loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
 import { createDelegationIntentAction, createWithdrawalIntentAction } from "@/lib/sentraActions";
 import { useWallet } from "@/lib/wallet";
 import { useToast } from "@/lib/toast";
-import { useAuth } from "@/lib/auth";
+import { walletSessionHeaders } from "@/lib/walletSession";
 import {
   erc20ApprovalAbi,
   sentraDelegationVaultAbi,
@@ -35,7 +35,6 @@ function Delegate() {
   const dataset = Route.useLoaderData() as SentraDataset;
   const { agents, delegations } = dataset;
   const wallet = useWallet();
-  const { session } = useAuth();
   const toast = useToast();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -83,14 +82,12 @@ function Delegate() {
 
   const next = () => setStep((s) => Math.min(4, s + 1));
   const back = () => setStep((s) => Math.max(1, s - 1));
-  const authHeaders = session?.access_token
-    ? { authorization: `Bearer ${session.access_token}` }
-    : undefined;
 
   const finish = async () => {
     if (!selected) return;
+    const authHeaders = walletSessionHeaders(wallet.address);
     if (!authHeaders) {
-      toast.push("Sign in before creating a delegation intent");
+      toast.push("Open Sign in and sign the wallet message before delegating");
       return;
     }
     if (!wallet.chainOk) {
@@ -152,8 +149,9 @@ function Delegate() {
   };
 
   const requestWithdrawal = async (delegationId: string, agentName: string, amountUsdc: number) => {
+    const authHeaders = walletSessionHeaders(wallet.address);
     if (!authHeaders) {
-      toast.push("Sign in before creating a withdrawal intent");
+      toast.push("Open Sign in and sign the wallet message before withdrawing");
       return;
     }
     const delegation = delegations.find((item) => item.id === delegationId);

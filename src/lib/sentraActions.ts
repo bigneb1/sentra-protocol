@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import {
   createPublicClient,
   createWalletClient,
@@ -19,7 +19,6 @@ import {
   sentraDelegationVaultAbi,
   sentraStakeVaultAbi,
 } from "@/contracts/sentraProtocol";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Json } from "@/integrations/supabase/types";
 import {
   ARC_CHAIN_ID,
@@ -33,11 +32,13 @@ import {
   ARC_USDC_ADDRESS,
 } from "@/lib/arcTestnet";
 import { SENTRA_ARC_TESTNET_DEPLOYMENT } from "@/lib/agentTypes";
+import type { Agent } from "@/lib/sentraData";
 import {
   computeBrierScore,
   computeNextReputation,
   computeReputationDelta,
 } from "@/lib/sentraScoring";
+import type { AgentStrategy } from "@/lib/agentTypes";
 
 const strategies = ["Macro", "Sports", "Contrarian", "Yield", "Tech", "Custom"] as const;
 
@@ -45,8 +46,8 @@ const money = z.number().finite().min(0).max(100_000_000);
 const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 const bytes32 = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const txHashSchema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
-const siweMessageSchema = z.string().min(80).max(4096);
 const signatureSchema = z.string().regex(/^0x[a-fA-F0-9]+$/);
+const callIdSchema = z.string().min(1).max(128);
 
 const arcChain = {
   id: ARC_CHAIN_ID,
@@ -78,11 +79,18 @@ const riskLimitsSchema = z.object({
   maxLeverage: z.number().finite().min(1).max(20),
 });
 
-const authMiddleware = [requireSupabaseAuth];
+const WALLET_AUTH_USER_PREFIX = "wallet:";
 
 type AuthContext = {
   userId: string;
+  walletAddress: `0x${string}`;
 };
+
+function getAuthContext(context: unknown): AuthContext {
+  const auth = context as Partial<AuthContext>;
+  if (!auth.userId || !auth.walletAddress) throw new Error("Wallet sign-in required");
+  return { userId: auth.userId, walletAddress: auth.walletAddress };
+}
 
 type ProtocolContracts = {
   agentRegistry: string;
@@ -94,15 +102,50 @@ type ProtocolContracts = {
   callAccess: string;
 };
 
-function getAuthContext(context: unknown): AuthContext {
-  const auth = context as Partial<AuthContext>;
-  if (!auth.userId) throw new Error("Unauthorized");
-  return { userId: auth.userId };
+function walletUserId(addressValue: string) {
+  return `${WALLET_AUTH_USER_PREFIX}${addressValue.toLowerCase()}`;
+}
+
+function normalizeHeader(value: string | null) {
+  return value && value.trim() ? value.trim() : null;
+}
+
+function decodeBase64Url(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return Buffer.from(padded, "base64").toString("utf8");
+}
+
+function getWalletHeaders() {
+  const request = getRequest();
+  const walletAddress = normalizeHeader(request?.headers.get("x-sentra-wallet-address") ?? null);
+  const rawMessage = normalizeHeader(request?.headers.get("x-sentra-wallet-message") ?? null);
+  const encoding = normalizeHeader(
+    request?.headers.get("x-sentra-wallet-message-encoding") ?? null,
+  );
+  const signature = normalizeHeader(request?.headers.get("x-sentra-wallet-signature") ?? null);
+  if (!walletAddress || !rawMessage || !signature) return null;
+  const message = encoding === "base64url" ? decodeBase64Url(rawMessage) : rawMessage;
+  return { walletAddress, message, signature };
 }
 
 async function getSupabaseAdmin() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
+}
+
+async function getOptionalSupabaseAdmin() {
+  if (
+    !process.env.SUPABASE_URL ||
+    !(process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY)
+  ) {
+    return null;
+  }
+  try {
+    return await getSupabaseAdmin();
+  } catch {
+    return null;
+  }
 }
 
 function getProtocolContracts(): ProtocolContracts {
@@ -172,8 +215,134 @@ function callAccessId(callId: string) {
   return `0x${callId.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function callPriceUnits(price: number) {
   return parseUnits(price.toFixed(6), 6);
+}
+
+async function runtimeFullCall(callId: string): Promise<{
+  id: string;
+  agentId: string;
+  date: string;
+  durationSeconds: number;
+  transcript: string;
+  pnlSummary: string;
+  biggestWin: string;
+  biggestLoss: string;
+  tomorrowThesis: string;
+  audioUrl: string | null;
+  subscriptionCost: number;
+  isFreePreview: boolean;
+}> {
+  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
+  const baseUrl = runtimeBaseUrl();
+  const secret = process.env.SENTRA_AGENT_WORKER_SECRET ?? process.env.SENTRA_RUNTIME_SECRET;
+  if (!baseUrl) throw new Error("SENTRA agent runtime URL is not configured");
+  if (!secret) throw new Error("SENTRA_AGENT_WORKER_SECRET is required for full runtime calls");
+
+  const response = await fetch(`${baseUrl}/calls/${encodeURIComponent(callId)}`, {
+    headers: {
+      accept: "application/json",
+      "x-sentra-runtime-secret": secret,
+    },
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Runtime call fetch failed (${response.status}): ${body.slice(0, 200)}`);
+  }
+  return (await response.json()) as {
+    id: string;
+    agentId: string;
+    date: string;
+    durationSeconds: number;
+    transcript: string;
+    pnlSummary: string;
+    biggestWin: string;
+    biggestLoss: string;
+    tomorrowThesis: string;
+    audioUrl: string | null;
+    subscriptionCost: number;
+    isFreePreview: boolean;
+  };
+}
+
+async function runtimePreviewCall(callId: string) {
+  const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
+  const runtime = await loadRuntimeDataset();
+  return runtime?.earningsCalls.find((item) => item.id === callId) ?? null;
+}
+
+async function verifyOnchainCallUnlock(input: {
+  callId: string;
+  price: number;
+  txHash: string;
+  payerAddress: string;
+}) {
+  const contracts = getProtocolContracts();
+  const callAccess = requireContractAddress(contracts.callAccess, "Call access");
+  const receipt = await arcPublicClient.getTransactionReceipt({
+    hash: input.txHash as `0x${string}`,
+  });
+  if (receipt.status !== "success") throw new Error("Unlock transaction was not successful");
+  if (!sameAddress(receipt.to, callAccess)) {
+    throw new Error("Unlock transaction did not target the call access contract");
+  }
+
+  const expectedPrice = callPriceUnits(input.price);
+  const id = callAccessId(input.callId);
+  const onchainPrice = await arcPublicClient.readContract({
+    address: callAccess,
+    abi: sentraCallAccessAbi,
+    functionName: "priceByCall",
+    args: [id],
+  });
+  if (onchainPrice !== expectedPrice) {
+    throw new Error("On-chain call price does not match the SENTRA price");
+  }
+
+  const unlockedEvent = findEventArgs<{
+    callId?: `0x${string}`;
+    subscriber?: `0x${string}`;
+    price?: bigint;
+  }>(receipt, callAccess, sentraCallAccessAbi, "CallUnlocked");
+  if (!unlockedEvent) throw new Error("CallUnlocked event not found in unlock tx");
+  if (unlockedEvent.callId?.toLowerCase() !== id.toLowerCase()) {
+    throw new Error("Unlock transaction used a different call id");
+  }
+  if (!sameAddress(unlockedEvent.subscriber, input.payerAddress)) {
+    throw new Error("Unlock transaction payer does not match the connected wallet");
+  }
+  if (unlockedEvent.price !== expectedPrice) {
+    throw new Error("Unlock transaction amount does not match the required 0.01 USDC");
+  }
+
+  const hasAccess = await arcPublicClient.readContract({
+    address: callAccess,
+    abi: sentraCallAccessAbi,
+    functionName: "hasAccess",
+    args: [id, input.payerAddress as `0x${string}`],
+  });
+  if (!hasAccess) throw new Error("Call access was not recorded on-chain");
+
+  return { callAccess, receipt };
+}
+
+async function runtimeCallHasAccess(callId: string, payerAddress: string) {
+  const contracts = getProtocolContracts();
+  if (!contracts.callAccess) return false;
+  try {
+    return await arcPublicClient.readContract({
+      address: contracts.callAccess as `0x${string}`,
+      abi: sentraCallAccessAbi,
+      functionName: "hasAccess",
+      args: [callAccessId(callId), payerAddress as `0x${string}`],
+    });
+  } catch {
+    return false;
+  }
 }
 
 function usdcUnits(amount: number) {
@@ -201,6 +370,125 @@ function agentMetadataUri(agentId: string) {
   return `${publicAppUrl()}/api/agent-metadata/${agentId}`;
 }
 
+function runtimeRequestHeaders() {
+  const secret = process.env.SENTRA_AGENT_WORKER_SECRET ?? process.env.SENTRA_RUNTIME_SECRET;
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (secret) headers["x-sentra-runtime-secret"] = secret;
+  return headers;
+}
+
+async function runtimeCreateAgent(input: {
+  ownerId: string;
+  ownerAddress: `0x${string}`;
+  slug: string;
+  name: string;
+  strategy: AgentStrategy;
+  description: string;
+  registryAgentId: `0x${string}`;
+  metadataHash: `0x${string}`;
+  strategyHash: `0x${string}`;
+  riskHash: `0x${string}`;
+  predictionKeyHash: `0x${string}`;
+  stakeUsdc: number;
+  delegationCapUsdc: number;
+  riskLimits: Agent["riskLimits"];
+  autoCalls: boolean;
+}) {
+  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
+  const baseUrl = runtimeBaseUrl();
+  if (!baseUrl) throw new Error("SENTRA agent runtime URL is not configured");
+
+  const response = await fetch(`${baseUrl}/agents`, {
+    method: "POST",
+    headers: runtimeRequestHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Runtime agent create failed (${response.status}): ${body.slice(0, 200)}`);
+  }
+  return (await response.json()) as {
+    status: "created" | "updated";
+    agentId: string;
+    slug: string;
+    databaseId: string;
+    metadataUri: string;
+    treasuryAddress: `0x${string}`;
+    circleWalletId: string;
+  };
+}
+
+async function runtimeRecordAgentDeployment(input: {
+  agentId: string;
+  ownerAddress: `0x${string}`;
+  agentWalletAddress?: `0x${string}`;
+  registryAgentId?: `0x${string}`;
+  arcErc8004Id: string;
+  erc8004TxHash: `0x${string}`;
+  registryTxHash: `0x${string}`;
+  stakeTxHash?: `0x${string}`;
+  stakeUsdc: number;
+}) {
+  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
+  const baseUrl = runtimeBaseUrl();
+  if (!baseUrl) throw new Error("SENTRA agent runtime URL is not configured");
+
+  const response = await fetch(
+    `${baseUrl}/agents/${encodeURIComponent(input.agentId)}/deployment`,
+    {
+      method: "POST",
+      headers: runtimeRequestHeaders(),
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Runtime deployment record failed (${response.status}): ${body.slice(0, 200)}`);
+  }
+  return (await response.json()) as { status: "recorded"; agentId: string };
+}
+
+async function runtimeRecordDelegation(input: {
+  agentId: string;
+  userId: string;
+  walletAddress: `0x${string}`;
+  amountUsdc: number;
+  txHash?: `0x${string}`;
+  status: "pending" | "active";
+}) {
+  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
+  const baseUrl = runtimeBaseUrl();
+  if (!baseUrl) return null;
+
+  const response = await fetch(`${baseUrl}/delegations`, {
+    method: "POST",
+    headers: runtimeRequestHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) return null;
+  return (await response.json()) as { status: "recorded"; delegationId: string };
+}
+
+async function runtimeRecordWithdrawal(input: {
+  delegationId: string;
+  walletAddress: `0x${string}`;
+  amountUsdc: number;
+  txHash?: `0x${string}`;
+  status: "created" | "confirmed";
+}) {
+  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
+  const baseUrl = runtimeBaseUrl();
+  if (!baseUrl) return null;
+
+  const response = await fetch(`${baseUrl}/withdrawals`, {
+    method: "POST",
+    headers: runtimeRequestHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) return null;
+  return (await response.json()) as { status: "recorded"; transactionId: string };
+}
+
 function sameAddress(a: string | null | undefined, b: string | null | undefined) {
   if (!a || !b) return false;
   try {
@@ -209,6 +497,182 @@ function sameAddress(a: string | null | undefined, b: string | null | undefined)
     return false;
   }
 }
+
+async function verifyAgentDeploymentOnArc(input: {
+  registryAgentId: `0x${string}`;
+  metadataUri?: string | null;
+  ownerAddress: string;
+  agentWalletAddress?: string | null;
+  arcErc8004Id: string;
+  erc8004TxHash: string;
+  registryTxHash: string;
+  stakeTxHash?: string;
+  stakeUsdc: number;
+}) {
+  const contracts = getProtocolContracts();
+  const registry = requireContractAddress(contracts.agentRegistry, "Agent registry");
+  const stakeVault = requireContractAddress(contracts.stakeVault, "Stake vault");
+  const erc8004Id = BigInt(input.arcErc8004Id);
+
+  await requireSuccessfulReceipt(input.erc8004TxHash, ARC_ERC8004_IDENTITY_REGISTRY);
+  const registryReceipt = await requireSuccessfulReceipt(input.registryTxHash, registry);
+  const registeredEvent = findEventArgs<{
+    agentId?: `0x${string}`;
+    owner?: `0x${string}`;
+    wallet?: `0x${string}`;
+    erc8004Id?: bigint;
+  }>(registryReceipt, registry, sentraAgentRegistryAbi, "AgentRegistered");
+  if (!registeredEvent) throw new Error("AgentRegistered event not found in registry tx");
+  if (registeredEvent.agentId?.toLowerCase() !== input.registryAgentId.toLowerCase()) {
+    throw new Error("Registry transaction registered a different agent id");
+  }
+  if (!sameAddress(registeredEvent.owner, input.ownerAddress)) {
+    throw new Error("Registry transaction owner does not match the connected wallet");
+  }
+  if (registeredEvent.erc8004Id !== erc8004Id) {
+    throw new Error("Registry transaction recorded a different ERC-8004 id");
+  }
+
+  const [isRegistered, registryErc8004Id, registryOwner, registryWallet, erc8004Owner, tokenUri] =
+    await Promise.all([
+      arcPublicClient.readContract({
+        address: registry,
+        abi: sentraAgentRegistryAbi,
+        functionName: "isRegistered",
+        args: [input.registryAgentId],
+      }),
+      arcPublicClient.readContract({
+        address: registry,
+        abi: sentraAgentRegistryAbi,
+        functionName: "erc8004Id",
+        args: [input.registryAgentId],
+      }),
+      arcPublicClient.readContract({
+        address: registry,
+        abi: sentraAgentRegistryAbi,
+        functionName: "agentOwner",
+        args: [input.registryAgentId],
+      }),
+      arcPublicClient.readContract({
+        address: registry,
+        abi: sentraAgentRegistryAbi,
+        functionName: "agentWallet",
+        args: [input.registryAgentId],
+      }),
+      arcPublicClient.readContract({
+        address: ARC_ERC8004_IDENTITY_REGISTRY,
+        abi: erc8004IdentityRegistryAbi,
+        functionName: "ownerOf",
+        args: [erc8004Id],
+      }),
+      arcPublicClient.readContract({
+        address: ARC_ERC8004_IDENTITY_REGISTRY,
+        abi: erc8004IdentityRegistryAbi,
+        functionName: "tokenURI",
+        args: [erc8004Id],
+      }),
+    ]);
+
+  if (!isRegistered) throw new Error("Agent is not registered on the SENTRA registry");
+  if (registryErc8004Id !== erc8004Id) throw new Error("SENTRA registry ERC-8004 id mismatch");
+  if (!sameAddress(registryOwner, input.ownerAddress)) {
+    throw new Error("SENTRA registry owner does not match the connected wallet");
+  }
+  if (!sameAddress(erc8004Owner, input.ownerAddress)) {
+    throw new Error("ERC-8004 identity owner does not match the connected wallet");
+  }
+  if (input.metadataUri && tokenUri !== input.metadataUri) {
+    throw new Error("ERC-8004 metadata URI does not match SENTRA metadata");
+  }
+  if (input.agentWalletAddress && !sameAddress(registryWallet, input.agentWalletAddress)) {
+    throw new Error("SENTRA registry wallet does not match the agent wallet");
+  }
+
+  let stakeBlockNumber: number | null = null;
+  if (input.stakeUsdc > 0 && !input.stakeTxHash) {
+    throw new Error("Stake transaction hash is required when stake is greater than zero");
+  }
+  if (input.stakeUsdc > 0 && input.stakeTxHash) {
+    const expectedStake = usdcUnits(input.stakeUsdc);
+    const stakeReceipt = await requireSuccessfulReceipt(input.stakeTxHash, stakeVault);
+    const stakeEvent = findEventArgs<{
+      agentId?: `0x${string}`;
+      funder?: `0x${string}`;
+      amount?: bigint;
+    }>(stakeReceipt, stakeVault, sentraStakeVaultAbi, "StakeDeposited");
+    if (!stakeEvent) throw new Error("StakeDeposited event not found in stake tx");
+    if (stakeEvent.agentId?.toLowerCase() !== input.registryAgentId.toLowerCase()) {
+      throw new Error("Stake transaction used a different agent id");
+    }
+    if (!sameAddress(stakeEvent.funder, input.ownerAddress)) {
+      throw new Error("Stake transaction funder does not match the connected wallet");
+    }
+    if (stakeEvent.amount !== expectedStake) {
+      throw new Error("Stake transaction amount does not match the requested stake");
+    }
+    const onchainStake = await arcPublicClient.readContract({
+      address: stakeVault,
+      abi: sentraStakeVaultAbi,
+      functionName: "stakeOf",
+      args: [input.registryAgentId],
+    });
+    if (onchainStake < expectedStake) throw new Error("Stake was not recorded on-chain");
+    stakeBlockNumber = Number(stakeReceipt.blockNumber);
+  }
+
+  return { registryReceipt, stakeBlockNumber };
+}
+
+async function requireWalletAuth(): Promise<{
+  userId: string;
+  walletAddress: `0x${string}`;
+}> {
+  const wallet = getWalletHeaders();
+  if (!wallet) throw new Error("Wallet sign-in required");
+  if (!address.safeParse(wallet.walletAddress).success) {
+    throw new Error("Wallet sign-in address is invalid");
+  }
+  if (!signatureSchema.safeParse(wallet.signature).success) {
+    throw new Error("Wallet sign-in signature is invalid");
+  }
+
+  const parsed = parseSiweMessage(wallet.message);
+  if (!parsed.address) throw new Error("SIWE message is missing an address");
+  if (!sameAddress(parsed.address, wallet.walletAddress)) {
+    throw new Error("SIWE address does not match connected wallet");
+  }
+  if (parsed.chainId !== ARC_CHAIN_ID) throw new Error("Sign in with an Arc Testnet wallet");
+
+  const expectedHost = requestHost();
+  const allowedDomains = new Set([expectedHost, appDomain().toLowerCase()]);
+  if (!parsed.domain || !allowedDomains.has(parsed.domain.toLowerCase())) {
+    throw new Error("SIWE domain does not match this SENTRA deployment");
+  }
+  if (parsed.uri) {
+    const uriHost = new URL(parsed.uri).host.toLowerCase();
+    if (!allowedDomains.has(uriHost)) throw new Error("SIWE URI does not match this deployment");
+  }
+
+  const verified = await verifySiweMessage(arcPublicClient, {
+    message: wallet.message,
+    signature: wallet.signature as `0x${string}`,
+    domain: parsed.domain,
+    address: parsed.address,
+    nonce: parsed.nonce,
+    time: new Date(),
+  });
+  if (!verified) throw new Error("Wallet signature could not be verified");
+
+  return {
+    userId: walletUserId(parsed.address),
+    walletAddress: parsed.address,
+  };
+}
+
+const walletAuthMiddleware = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  const auth = await requireWalletAuth();
+  return next({ context: auth });
+});
 
 function requireBytes32(value: string | null | undefined, label: string) {
   if (!value || !/^0x[a-fA-F0-9]{64}$/.test(value)) {
@@ -348,9 +812,10 @@ async function audit(
   action: string,
   input: { actorId?: string | null; table?: string; recordId?: string; data?: unknown },
 ) {
-  const supabaseAdmin = await getSupabaseAdmin();
+  const supabaseAdmin = await getOptionalSupabaseAdmin();
+  if (!supabaseAdmin) return;
   await supabaseAdmin.from("audit_logs").insert({
-    actor_id: input.actorId ?? null,
+    actor_id: isUuid(input.actorId ?? "") ? input.actorId : null,
     action,
     entity_type: input.table ?? null,
     entity_id: input.recordId ?? null,
@@ -423,71 +888,6 @@ function requestHost() {
   return host.toLowerCase();
 }
 
-function requestOrigin() {
-  const request = getRequest();
-  const proto = request?.headers.get("x-forwarded-proto") ?? "https";
-  return `${proto}://${requestHost()}`;
-}
-
-export const siweWalletSignInAction = createServerFn({ method: "POST" })
-  .inputValidator(
-    z.object({
-      message: siweMessageSchema,
-      signature: signatureSchema,
-    }),
-  )
-  .handler(async ({ data }) => {
-    const parsed = parseSiweMessage(data.message);
-    if (!parsed.address) throw new Error("SIWE message is missing an address");
-    if (parsed.chainId !== ARC_CHAIN_ID) throw new Error("Sign in with an Arc Testnet wallet");
-
-    const expectedHost = requestHost();
-    const allowedDomains = new Set([expectedHost, appDomain().toLowerCase()]);
-    if (!parsed.domain || !allowedDomains.has(parsed.domain.toLowerCase())) {
-      throw new Error("SIWE domain does not match this SENTRA deployment");
-    }
-    if (parsed.uri) {
-      const uriHost = new URL(parsed.uri).host.toLowerCase();
-      if (!allowedDomains.has(uriHost)) throw new Error("SIWE URI does not match this deployment");
-    }
-
-    const verified = await verifySiweMessage(arcPublicClient, {
-      message: data.message,
-      signature: data.signature as `0x${string}`,
-      domain: parsed.domain,
-      address: parsed.address,
-      nonce: parsed.nonce,
-      time: new Date(),
-    });
-    if (!verified) throw new Error("Wallet signature could not be verified");
-
-    const supabaseAdmin = await getSupabaseAdmin();
-    const email = `${parsed.address.toLowerCase().slice(2)}@wallet.sentra.local`;
-    const displayName = `${parsed.address.slice(0, 6)}...${parsed.address.slice(-4)}`;
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
-      email,
-      options: {
-        data: {
-          display_name: displayName,
-          wallet_address: parsed.address.toLowerCase(),
-          auth_provider: "siwe",
-        },
-        redirectTo: requestOrigin(),
-      },
-    });
-    if (linkError) throw linkError;
-
-    const otp = linkData.properties?.email_otp;
-    if (!otp) throw new Error("Supabase did not return a wallet session token");
-
-    return {
-      email,
-      token: otp,
-      walletAddress: parsed.address,
-    };
-  });
-
 async function getCircleWalletClient() {
   const missing = missingCircleEnv();
   if (missing.length > 0) {
@@ -507,7 +907,7 @@ async function getCircleWalletClient() {
 }
 
 export const registerAgentAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(
     z.object({
       name: z.string().min(2).max(32),
@@ -523,8 +923,8 @@ export const registerAgentAction = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data, context }) => {
-    const { userId } = getAuthContext(context);
-    const supabaseAdmin = await getSupabaseAdmin();
+    const { userId, walletAddress } = getAuthContext(context);
+    const supabaseAdmin = await getOptionalSupabaseAdmin();
     const slug = `${slugify(data.name)}-${crypto.randomUUID().slice(0, 8)}`;
     const metadata = {
       name: data.name,
@@ -538,6 +938,39 @@ export const registerAgentAction = createServerFn({ method: "POST" })
     const strategyHash = hashText(data.strategy);
     const riskHash = hashJson(data.riskLimits);
     const predictionKeyHash = hashText(`sentra:prediction-key:${userId}:${slug}`);
+
+    if (!supabaseAdmin) {
+      const runtime = await runtimeCreateAgent({
+        ownerId: userId,
+        ownerAddress: walletAddress,
+        slug,
+        name: data.name,
+        strategy: data.strategy,
+        description: data.description ?? "",
+        registryAgentId,
+        metadataHash,
+        strategyHash,
+        riskHash,
+        predictionKeyHash,
+        stakeUsdc: data.stakeUsdc,
+        delegationCapUsdc: data.publicDelegations ? data.delegationCapUsdc : 0,
+        riskLimits: data.riskLimits,
+        autoCalls: data.autoCalls,
+      });
+      return {
+        agentId: runtime.agentId,
+        slug: runtime.slug,
+        registryAgentId,
+        metadataUri: runtime.metadataUri,
+        metadataHash,
+        strategyHash,
+        riskHash,
+        predictionKeyHash,
+        protocolReady: missingProtocolContracts().length === 0,
+        missingProtocolEnv: missingProtocolContracts(),
+        runtimeBacked: true,
+      };
+    }
 
     await supabaseAdmin.from("profiles").upsert({ user_id: userId }, { onConflict: "user_id" });
 
@@ -614,7 +1047,7 @@ export const registerAgentAction = createServerFn({ method: "POST" })
   });
 
 export const createStakeIntentAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(z.object({ agentId: z.string().uuid(), amountUsdc: money.min(0.000001) }))
   .handler(async ({ data, context }) => {
     const { userId } = getAuthContext(context);
@@ -646,7 +1079,7 @@ export const createStakeIntentAction = createServerFn({ method: "POST" })
   });
 
 export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(
     z.object({
       agentId: z.string().uuid(),
@@ -664,84 +1097,42 @@ export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST
   )
   .handler(async ({ data, context }) => {
     const { userId } = getAuthContext(context);
+    const supabaseAdmin = await getOptionalSupabaseAdmin();
+
+    if (!supabaseAdmin) {
+      const { loadRuntimeDataset, runtimeBaseUrl } = await import("@/lib/runtimeDataset");
+      const runtime = await loadRuntimeDataset();
+      const runtimeAgent = runtime?.agents.find(
+        (item) => item.databaseId === data.agentId || item.id === data.agentId,
+      );
+      const registryAgentId = requireBytes32(runtimeAgent?.registryAgentId, "Agent registry id");
+      await verifyAgentDeploymentOnArc({
+        registryAgentId,
+        metadataUri: runtimeAgent ? `${runtimeBaseUrl()}/metadata/${runtimeAgent.id}` : null,
+        ownerAddress: data.ownerAddress,
+        agentWalletAddress: data.agentWalletAddress ?? runtimeAgent?.walletAddress ?? null,
+        arcErc8004Id: data.arcErc8004Id,
+        erc8004TxHash: data.erc8004TxHash,
+        registryTxHash: data.registryTxHash,
+        stakeTxHash: data.stakeTxHash,
+        stakeUsdc: data.stakeUsdc,
+      });
+      await runtimeRecordAgentDeployment({
+        agentId: data.agentId,
+        ownerAddress: data.ownerAddress as `0x${string}`,
+        agentWalletAddress: data.agentWalletAddress as `0x${string}` | undefined,
+        registryAgentId,
+        arcErc8004Id: data.arcErc8004Id,
+        erc8004TxHash: data.erc8004TxHash as `0x${string}`,
+        registryTxHash: data.registryTxHash as `0x${string}`,
+        stakeTxHash: data.stakeTxHash as `0x${string}` | undefined,
+        stakeUsdc: data.stakeUsdc,
+      });
+      return { status: "recorded" as const };
+    }
+
     const agent = await requireAgentOwner(data.agentId, userId);
-    const supabaseAdmin = await getSupabaseAdmin();
-    const contracts = getProtocolContracts();
-    const registry = requireContractAddress(contracts.agentRegistry, "Agent registry");
-    const stakeVault = requireContractAddress(contracts.stakeVault, "Stake vault");
     const registryAgentId = requireBytes32(agent.registry_agent_id, "Agent registry id");
-    const erc8004Id = BigInt(data.arcErc8004Id);
-
-    await requireSuccessfulReceipt(data.erc8004TxHash, ARC_ERC8004_IDENTITY_REGISTRY);
-    const registryReceipt = await requireSuccessfulReceipt(data.registryTxHash, registry);
-    const registeredEvent = findEventArgs<{
-      agentId?: `0x${string}`;
-      owner?: `0x${string}`;
-      wallet?: `0x${string}`;
-      erc8004Id?: bigint;
-    }>(registryReceipt, registry, sentraAgentRegistryAbi, "AgentRegistered");
-    if (!registeredEvent) throw new Error("AgentRegistered event not found in registry tx");
-    if (registeredEvent.agentId?.toLowerCase() !== registryAgentId.toLowerCase()) {
-      throw new Error("Registry transaction registered a different agent id");
-    }
-    if (!sameAddress(registeredEvent.owner, data.ownerAddress)) {
-      throw new Error("Registry transaction owner does not match the connected wallet");
-    }
-    if (registeredEvent.erc8004Id !== erc8004Id) {
-      throw new Error("Registry transaction recorded a different ERC-8004 id");
-    }
-
-    const [isRegistered, registryErc8004Id, registryOwner, registryWallet, erc8004Owner, tokenUri] =
-      await Promise.all([
-        arcPublicClient.readContract({
-          address: registry,
-          abi: sentraAgentRegistryAbi,
-          functionName: "isRegistered",
-          args: [registryAgentId],
-        }),
-        arcPublicClient.readContract({
-          address: registry,
-          abi: sentraAgentRegistryAbi,
-          functionName: "erc8004Id",
-          args: [registryAgentId],
-        }),
-        arcPublicClient.readContract({
-          address: registry,
-          abi: sentraAgentRegistryAbi,
-          functionName: "agentOwner",
-          args: [registryAgentId],
-        }),
-        arcPublicClient.readContract({
-          address: registry,
-          abi: sentraAgentRegistryAbi,
-          functionName: "agentWallet",
-          args: [registryAgentId],
-        }),
-        arcPublicClient.readContract({
-          address: ARC_ERC8004_IDENTITY_REGISTRY,
-          abi: erc8004IdentityRegistryAbi,
-          functionName: "ownerOf",
-          args: [erc8004Id],
-        }),
-        arcPublicClient.readContract({
-          address: ARC_ERC8004_IDENTITY_REGISTRY,
-          abi: erc8004IdentityRegistryAbi,
-          functionName: "tokenURI",
-          args: [erc8004Id],
-        }),
-      ]);
-
-    if (!isRegistered) throw new Error("Agent is not registered on the SENTRA registry");
-    if (registryErc8004Id !== erc8004Id) throw new Error("SENTRA registry ERC-8004 id mismatch");
-    if (!sameAddress(registryOwner, data.ownerAddress)) {
-      throw new Error("SENTRA registry owner does not match the connected wallet");
-    }
-    if (!sameAddress(erc8004Owner, data.ownerAddress)) {
-      throw new Error("ERC-8004 identity owner does not match the connected wallet");
-    }
-    if (agent.metadata_uri && tokenUri !== agent.metadata_uri) {
-      throw new Error("ERC-8004 metadata URI does not match SENTRA metadata");
-    }
 
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from("agent_wallets")
@@ -749,10 +1140,18 @@ export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST
       .eq("agent_id", agent.id)
       .maybeSingle();
     if (walletError) throw walletError;
-    const expectedAgentWallet = data.agentWalletAddress ?? wallet?.wallet_address ?? null;
-    if (expectedAgentWallet && !sameAddress(registryWallet, expectedAgentWallet)) {
-      throw new Error("SENTRA registry wallet does not match the Circle agent wallet");
-    }
+
+    const verified = await verifyAgentDeploymentOnArc({
+      registryAgentId,
+      metadataUri: agent.metadata_uri,
+      ownerAddress: data.ownerAddress,
+      agentWalletAddress: data.agentWalletAddress ?? wallet?.wallet_address ?? null,
+      arcErc8004Id: data.arcErc8004Id,
+      erc8004TxHash: data.erc8004TxHash,
+      registryTxHash: data.registryTxHash,
+      stakeTxHash: data.stakeTxHash,
+      stakeUsdc: data.stakeUsdc,
+    });
 
     const { error: updateAgentError } = await supabaseAdmin
       .from("agents")
@@ -763,48 +1162,20 @@ export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST
       .eq("id", agent.id);
     if (updateAgentError) throw updateAgentError;
 
-    if (data.stakeUsdc > 0 && !data.stakeTxHash) {
-      throw new Error("Stake transaction hash is required when stake is greater than zero");
-    }
-
     if (data.stakeUsdc > 0 && data.stakeTxHash) {
-      const expectedStake = usdcUnits(data.stakeUsdc);
-      const stakeReceipt = await requireSuccessfulReceipt(data.stakeTxHash, stakeVault);
-      const stakeEvent = findEventArgs<{
-        agentId?: `0x${string}`;
-        funder?: `0x${string}`;
-        amount?: bigint;
-      }>(stakeReceipt, stakeVault, sentraStakeVaultAbi, "StakeDeposited");
-      if (!stakeEvent) throw new Error("StakeDeposited event not found in stake tx");
-      if (stakeEvent.agentId?.toLowerCase() !== registryAgentId.toLowerCase()) {
-        throw new Error("Stake transaction used a different agent id");
-      }
-      if (!sameAddress(stakeEvent.funder, data.ownerAddress)) {
-        throw new Error("Stake transaction funder does not match the connected wallet");
-      }
-      if (stakeEvent.amount !== expectedStake) {
-        throw new Error("Stake transaction amount does not match the requested stake");
-      }
-      const onchainStake = await arcPublicClient.readContract({
-        address: stakeVault,
-        abi: sentraStakeVaultAbi,
-        functionName: "stakeOf",
-        args: [registryAgentId],
-      });
-      if (onchainStake < expectedStake) throw new Error("Stake was not recorded on-chain");
-
       await supabaseAdmin.from("vault_transactions").insert({
         agent_id: agent.id,
         kind: "stake",
         amount_usdc: data.stakeUsdc,
         tx_hash: data.stakeTxHash,
-        block_number: Number(stakeReceipt.blockNumber),
+        block_number: verified.stakeBlockNumber,
         metadata: {
           registryTxHash: data.registryTxHash,
           erc8004TxHash: data.erc8004TxHash,
           arcErc8004Id: data.arcErc8004Id,
           ownerAddress: data.ownerAddress,
           registryAgentId,
+          registryBlockNumber: Number(verified.registryReceipt.blockNumber),
         } as Json,
       });
       await supabaseAdmin
@@ -824,12 +1195,26 @@ export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST
   });
 
 export const createAgentWalletAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(z.object({ agentId: z.string().uuid() }))
   .handler(async ({ data, context }) => {
     const { userId } = getAuthContext(context);
+    const supabaseAdmin = await getOptionalSupabaseAdmin();
+    if (!supabaseAdmin) {
+      const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
+      const runtime = await loadRuntimeDataset();
+      const agent = runtime?.agents.find(
+        (item) => item.databaseId === data.agentId || item.id === data.agentId,
+      );
+      if (!agent) throw new Error("Agent not found");
+      return {
+        status: "ready" as const,
+        walletId: agent.circleWalletId || `runtime-wallet-${agent.id}`,
+        address: agent.walletAddress,
+      };
+    }
+
     const agent = await requireAgentOwner(data.agentId, userId);
-    const supabaseAdmin = await getSupabaseAdmin();
 
     const { data: existingWallet, error: existingWalletError } = await supabaseAdmin
       .from("agent_wallets")
@@ -897,7 +1282,7 @@ export const createAgentWalletAction = createServerFn({ method: "POST" })
   });
 
 export const registerErc8004IdentityAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(
     z.object({ agentId: z.string().uuid(), metadataUri: z.string().min(1).max(512).optional() }),
   )
@@ -961,7 +1346,6 @@ export const registerErc8004IdentityAction = createServerFn({ method: "POST" })
   });
 
 export const createDelegationIntentAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
   .inputValidator(
     z.object({
       agentId: z.string().uuid(),
@@ -973,10 +1357,64 @@ export const createDelegationIntentAction = createServerFn({ method: "POST" })
         .optional(),
     }),
   )
-  .handler(async ({ data, context }) => {
-    const { userId } = getAuthContext(context);
-    const supabaseAdmin = await getSupabaseAdmin();
+  .handler(async ({ data }) => {
+    const { userId, walletAddress } = await requireWalletAuth();
+    const supabaseAdmin = await getOptionalSupabaseAdmin();
     const contracts = getProtocolContracts();
+    if (!supabaseAdmin) {
+      const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
+      const runtime = await loadRuntimeDataset();
+      const runtimeAgent = runtime?.agents.find(
+        (item) => item.databaseId === data.agentId || item.id === data.agentId,
+      );
+      if (!runtimeAgent) throw new Error("Agent not found");
+      const registryAgentId = requireBytes32(runtimeAgent.registryAgentId, "Agent registry id");
+      const amountUnits = usdcUnits(data.amountUsdc);
+      let status: "pending" | "active" = "pending";
+      if (data.txHash) {
+        const delegatorAddress = data.delegatorAddress ?? walletAddress;
+        const vault = requireContractAddress(contracts.delegationVault, "Delegation vault");
+        const receipt = await requireSuccessfulReceipt(data.txHash, vault);
+        const delegatedEvent = findEventArgs<{
+          agentId?: `0x${string}`;
+          delegator?: `0x${string}`;
+          amount?: bigint;
+        }>(receipt, vault, sentraDelegationVaultAbi, "Delegated");
+        if (!delegatedEvent) throw new Error("Delegated event not found in delegation tx");
+        if (delegatedEvent.agentId?.toLowerCase() !== registryAgentId.toLowerCase()) {
+          throw new Error("Delegation transaction used a different agent id");
+        }
+        if (!sameAddress(delegatedEvent.delegator, delegatorAddress)) {
+          throw new Error("Delegation transaction delegator does not match the connected wallet");
+        }
+        if (delegatedEvent.amount !== amountUnits) {
+          throw new Error("Delegation transaction amount does not match the requested amount");
+        }
+        const onchainDelegated = await arcPublicClient.readContract({
+          address: vault,
+          abi: sentraDelegationVaultAbi,
+          functionName: "delegatedBy",
+          args: [registryAgentId, delegatorAddress as `0x${string}`],
+        });
+        if (onchainDelegated < amountUnits) throw new Error("Delegation was not recorded on-chain");
+        status = "active";
+      }
+      const recorded = await runtimeRecordDelegation({
+        agentId: runtimeAgent.id,
+        userId,
+        walletAddress,
+        amountUsdc: data.amountUsdc,
+        txHash: data.txHash as `0x${string}` | undefined,
+        status,
+      });
+      return {
+        status: "created" as const,
+        intentId: recorded?.delegationId ?? `runtime:${data.txHash ?? crypto.randomUUID()}`,
+        delegationVault: contracts.delegationVault,
+        missingProtocolEnv: missingProtocolContracts(),
+      };
+    }
+
     const { data: agent, error: agentError } = await supabaseAdmin
       .from("agents")
       .select("*")
@@ -1083,7 +1521,6 @@ export const createDelegationIntentAction = createServerFn({ method: "POST" })
   });
 
 export const createWithdrawalIntentAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
   .inputValidator(
     z.object({
       delegationId: z.string().uuid(),
@@ -1092,9 +1529,24 @@ export const createWithdrawalIntentAction = createServerFn({ method: "POST" })
       withdrawerAddress: address.optional(),
     }),
   )
-  .handler(async ({ data, context }) => {
-    const { userId } = getAuthContext(context);
-    const supabaseAdmin = await getSupabaseAdmin();
+  .handler(async ({ data }) => {
+    const { userId, walletAddress } = await requireWalletAuth();
+    const supabaseAdmin = await getOptionalSupabaseAdmin();
+    if (!supabaseAdmin) {
+      const recorded = await runtimeRecordWithdrawal({
+        delegationId: data.delegationId,
+        walletAddress,
+        amountUsdc: data.amountUsdc,
+        txHash: data.txHash as `0x${string}` | undefined,
+        status: data.txHash ? "confirmed" : "created",
+      });
+      return {
+        status: data.txHash ? ("confirmed" as const) : ("created" as const),
+        intentId: recorded?.transactionId ?? `runtime:${data.txHash ?? crypto.randomUUID()}`,
+        missingProtocolEnv: missingProtocolContracts(),
+      };
+    }
+
     const { data: delegation, error: delegationError } = await supabaseAdmin
       .from("delegations")
       .select("*")
@@ -1219,7 +1671,7 @@ export const createWithdrawalIntentAction = createServerFn({ method: "POST" })
   });
 
 export const submitPredictionAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(
     z.object({
       agentId: z.string().uuid(),
@@ -1281,7 +1733,7 @@ export const submitPredictionAction = createServerFn({ method: "POST" })
   });
 
 export const resolvePredictionAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(
     z.object({
       predictionId: z.string().uuid(),
@@ -1372,7 +1824,7 @@ export const resolvePredictionAction = createServerFn({ method: "POST" })
   });
 
 export const updateReputationAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(z.object({ agentId: z.string().uuid(), reason: z.string().max(500).optional() }))
   .handler(async ({ data, context }) => {
     const { userId } = getAuthContext(context);
@@ -1447,7 +1899,7 @@ export const updateReputationAction = createServerFn({ method: "POST" })
   });
 
 export const publishEarningsCallAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
+  .middleware([walletAuthMiddleware])
   .inputValidator(
     z.object({
       agentId: z.string().uuid(),
@@ -1520,44 +1972,86 @@ export const publishEarningsCallAction = createServerFn({ method: "POST" })
   });
 
 export const prepareCallUnlockAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
-  .inputValidator(z.object({ callId: z.string().uuid() }))
+  .inputValidator(z.object({ callId: z.string().min(1).max(128) }))
   .handler(async ({ data }) => {
-    const supabaseAdmin = await getSupabaseAdmin();
-    const { data: call, error } = await supabaseAdmin
-      .from("earnings_calls")
-      .select("id, price_usdc, is_free_preview")
-      .eq("id", data.callId)
-      .single();
-    if (error) throw error;
+    if (isUuid(data.callId)) {
+      try {
+        const supabaseAdmin = await getSupabaseAdmin();
+        const { data: call, error } = await supabaseAdmin
+          .from("earnings_calls")
+          .select("id, price_usdc, is_free_preview")
+          .eq("id", data.callId)
+          .single();
+        if (!error && call) {
+          const price = earningsCallPrice(call);
+          if (call.is_free_preview || price <= 0) {
+            return {
+              status: "free" as const,
+              callAccess: null,
+              callAccessId: callAccessId(call.id),
+              amountUsdc: 0,
+              amountUnits: "0",
+              pricingTxHash: null,
+            };
+          }
+          return ensureCallPricedOnArc(call.id, price);
+        }
+      } catch {
+        // Fall through to the VPS runtime path when Supabase is not configured.
+      }
+    }
 
-    const price = earningsCallPrice(call);
-    if (call.is_free_preview || price <= 0) {
+    const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
+    const runtime = await loadRuntimeDataset();
+    const call = runtime?.earningsCalls.find((item) => item.id === data.callId);
+    if (!call) throw new Error("Call not found");
+    if (call.isFreePreview || call.subscriptionCost <= 0) {
       return {
         status: "free" as const,
         callAccess: null,
-        callAccessId: callAccessId(call.id),
+        callAccessId: call.callAccessId,
         amountUsdc: 0,
         amountUnits: "0",
         pricingTxHash: null,
       };
     }
-
-    return ensureCallPricedOnArc(call.id, price);
+    return ensureCallPricedOnArc(call.id, call.subscriptionCost);
   });
 
 export const unlockCallAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
   .inputValidator(
     z.object({
-      callId: z.string().uuid(),
+      callId: callIdSchema,
       paymentSource: z.enum(["usdc", "gateway", "free"]).default("usdc"),
       txHash: txHashSchema.optional(),
       payerAddress: address.optional(),
     }),
   )
-  .handler(async ({ data, context }) => {
-    const { userId } = getAuthContext(context);
+  .handler(async ({ data }) => {
+    const { userId } = await requireWalletAuth();
+    const runtimeCall = await runtimePreviewCall(data.callId);
+    if (runtimeCall) {
+      const price = runtimeCall.isFreePreview ? 0 : runtimeCall.subscriptionCost || 0.01;
+      if (runtimeCall.isFreePreview || price <= 0) {
+        return { status: "unlocked" as const, unlockId: `runtime:${runtimeCall.id}` };
+      }
+      if (data.txHash && data.payerAddress) {
+        await verifyOnchainCallUnlock({
+          callId: runtimeCall.id,
+          price,
+          txHash: data.txHash,
+          payerAddress: data.payerAddress,
+        });
+        return { status: "unlocked" as const, unlockId: `runtime:${runtimeCall.id}` };
+      }
+      return {
+        status: "payment_required" as const,
+        transactionId: `runtime:${runtimeCall.id}`,
+        amountUsdc: price,
+        callAccess: getProtocolContracts().callAccess,
+      };
+    }
+
     const supabaseAdmin = await getSupabaseAdmin();
     const { data: call, error: callError } = await supabaseAdmin
       .from("earnings_calls")
@@ -1609,50 +2103,12 @@ export const unlockCallAction = createServerFn({ method: "POST" })
 
     if (data.txHash && data.payerAddress) {
       const contracts = getProtocolContracts();
-      if (!contracts.callAccess) throw new Error("Call access contract address is not configured");
-
-      const receipt = await arcPublicClient.getTransactionReceipt({
-        hash: data.txHash as `0x${string}`,
+      const { receipt } = await verifyOnchainCallUnlock({
+        callId: call.id,
+        price,
+        txHash: data.txHash,
+        payerAddress: data.payerAddress,
       });
-      if (receipt.status !== "success") throw new Error("Unlock transaction was not successful");
-      if (!sameAddress(receipt.to, contracts.callAccess)) {
-        throw new Error("Unlock transaction did not target the call access contract");
-      }
-
-      const expectedPrice = callPriceUnits(price);
-      const onchainPrice = await arcPublicClient.readContract({
-        address: contracts.callAccess as `0x${string}`,
-        abi: sentraCallAccessAbi,
-        functionName: "priceByCall",
-        args: [callAccessId(call.id)],
-      });
-      if (onchainPrice !== expectedPrice) {
-        throw new Error("On-chain call price does not match the SENTRA price");
-      }
-
-      const unlockedEvent = findEventArgs<{
-        callId?: `0x${string}`;
-        subscriber?: `0x${string}`;
-        price?: bigint;
-      }>(receipt, contracts.callAccess, sentraCallAccessAbi, "CallUnlocked");
-      if (!unlockedEvent) throw new Error("CallUnlocked event not found in unlock tx");
-      if (unlockedEvent.callId?.toLowerCase() !== callAccessId(call.id).toLowerCase()) {
-        throw new Error("Unlock transaction used a different call id");
-      }
-      if (!sameAddress(unlockedEvent.subscriber, data.payerAddress)) {
-        throw new Error("Unlock transaction payer does not match the connected wallet");
-      }
-      if (unlockedEvent.price !== expectedPrice) {
-        throw new Error("Unlock transaction amount does not match the required 0.01 USDC");
-      }
-
-      const hasAccess = await arcPublicClient.readContract({
-        address: contracts.callAccess as `0x${string}`,
-        abi: sentraCallAccessAbi,
-        functionName: "hasAccess",
-        args: [callAccessId(call.id), data.payerAddress as `0x${string}`],
-      });
-      if (!hasAccess) throw new Error("Call access was not recorded on-chain");
 
       const { data: tx, error: txError } = await supabaseAdmin
         .from("circle_transactions")
@@ -1739,10 +2195,34 @@ export const unlockCallAction = createServerFn({ method: "POST" })
   });
 
 export const getUnlockedCallAction = createServerFn({ method: "POST" })
-  .middleware(authMiddleware)
-  .inputValidator(z.object({ callId: z.string().uuid() }))
-  .handler(async ({ data, context }) => {
-    const { userId } = getAuthContext(context);
+  .inputValidator(z.object({ callId: callIdSchema }))
+  .handler(async ({ data }) => {
+    const { userId, walletAddress } = await requireWalletAuth();
+    const runtimeCall = await runtimePreviewCall(data.callId);
+    if (runtimeCall) {
+      const price = runtimeCall.isFreePreview ? 0 : runtimeCall.subscriptionCost || 0.01;
+      const canRead =
+        runtimeCall.isFreePreview ||
+        price <= 0 ||
+        (await runtimeCallHasAccess(runtimeCall.id, walletAddress));
+      if (!canRead) throw new Error("Call is locked");
+      const full = await runtimeFullCall(runtimeCall.id);
+      return {
+        id: full.id,
+        agentId: full.agentId,
+        callDate: full.date,
+        durationSeconds: full.durationSeconds,
+        transcript: full.transcript,
+        pnlSummary: full.pnlSummary,
+        biggestWin: full.biggestWin,
+        biggestLoss: full.biggestLoss,
+        tomorrowThesis: full.tomorrowThesis,
+        audioUrl: full.audioUrl,
+        priceUsdc: full.subscriptionCost,
+        isFreePreview: full.isFreePreview,
+      };
+    }
+
     const supabaseAdmin = await getSupabaseAdmin();
     const { data: call, error: callError } = await supabaseAdmin
       .from("earnings_calls")

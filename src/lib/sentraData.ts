@@ -4,6 +4,7 @@ import { arcTestnet } from "@/lib/wagmi";
 import { sentraDelegationVaultAbi, sentraProtocolContracts } from "@/contracts/sentraProtocol";
 import type { Tables } from "@/integrations/supabase/types";
 import type { AgentStrategy } from "@/lib/agentTypes";
+import { loadRuntimeDataset } from "@/lib/runtimeDataset";
 
 export type Strategy = Exclude<AgentStrategy, "Custom">;
 
@@ -147,11 +148,20 @@ function asDay(date: string | null | undefined) {
 
 async function resolveCurrentUserId(userId?: string | null) {
   if (userId !== undefined) return userId;
-  if (typeof window === "undefined") return null;
+  return null;
+}
 
-  const { data, error } = await supabase.auth.getUser();
-  if (error) return null;
-  return data.user?.id ?? null;
+function browserHasSupabaseConfig() {
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  return Boolean(env?.VITE_SUPABASE_URL && env?.VITE_SUPABASE_PUBLISHABLE_KEY);
+}
+
+function serverHasSupabaseConfig() {
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY);
+}
+
+function canReadSupabase() {
+  return typeof window === "undefined" ? serverHasSupabaseConfig() : browserHasSupabaseConfig();
 }
 
 function jsonRecord(value: unknown): Record<string, unknown> {
@@ -367,6 +377,12 @@ function emptyDataset(): SentraDataset {
   };
 }
 
+async function fallbackRuntimeDataset() {
+  const runtime = await loadRuntimeDataset();
+  if (runtime) return runtime;
+  return emptyDataset();
+}
+
 function isRecoverableSupabaseReadError(error: { message?: string } | null | undefined) {
   const message = error?.message?.toLowerCase() ?? "";
   return (
@@ -389,6 +405,8 @@ function optionalRows<T>(
 }
 
 export async function loadSentraDataset(userId?: string | null): Promise<SentraDataset> {
+  if (!canReadSupabase()) return fallbackRuntimeDataset();
+
   try {
     const resolvedUserId = await resolveCurrentUserId(userId);
     const [
@@ -420,7 +438,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
     if (firstError) {
       if (isRecoverableSupabaseReadError(firstError)) {
         console.warn(`SENTRA Supabase read skipped: ${firstError.message}`);
-        return emptyDataset();
+        return fallbackRuntimeDataset();
       }
       throw firstError;
     }
@@ -530,13 +548,28 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
           `${byUuid.get(event.agent_id) ?? "Agent"} ${event.reason ?? "reputation update"} · reputation ${event.new_score}`,
       ) ?? [];
 
-    return { agents, predictions, earningsCalls, delegations, vaultTransactions, activityFeed };
+    const dataset = {
+      agents,
+      predictions,
+      earningsCalls,
+      delegations,
+      vaultTransactions,
+      activityFeed,
+    };
+    if (
+      dataset.agents.length === 0 &&
+      dataset.predictions.length === 0 &&
+      dataset.earningsCalls.length === 0
+    ) {
+      return fallbackRuntimeDataset();
+    }
+    return dataset;
   } catch (error) {
     if (isRecoverableSupabaseReadError(error as { message?: string })) {
       console.warn(
         `SENTRA Supabase read skipped: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return emptyDataset();
+      return fallbackRuntimeDataset();
     }
     throw error;
   }

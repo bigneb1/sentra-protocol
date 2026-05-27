@@ -12,7 +12,6 @@ import "@rainbow-me/rainbowkit/styles.css";
 import appCss from "../styles.css?url";
 import { wagmiConfig } from "@/lib/wagmi";
 import { WalletProvider } from "@/lib/wallet";
-import { AuthProvider } from "@/lib/auth";
 import { ToastProvider } from "@/lib/toast";
 import { AppLayout } from "@/components/sentra/AppLayout";
 
@@ -127,13 +126,11 @@ function RootComponent() {
           })}
           modalSize="compact"
         >
-          <AuthProvider>
-            <WalletProvider>
-              <ToastProvider>
-                <AppLayout />
-              </ToastProvider>
-            </WalletProvider>
-          </AuthProvider>
+          <WalletProvider>
+            <ToastProvider>
+              <AppLayout />
+            </ToastProvider>
+          </WalletProvider>
         </RainbowKitProvider>
       </WagmiProvider>
     </QueryClientProvider>

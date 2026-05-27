@@ -28,7 +28,7 @@ import { BrierBadge } from "@/components/sentra/BrierBadge";
 import { Waveform } from "@/components/sentra/Waveform";
 import { useToast } from "@/lib/toast";
 import { useWallet } from "@/lib/wallet";
-import { useAuth } from "@/lib/auth";
+import { walletSessionHeaders } from "@/lib/walletSession";
 import {
   erc20ApprovalAbi,
   sentraDelegationVaultAbi,
@@ -56,7 +56,6 @@ function AgentPage() {
   const calls = getAgentCalls(dataset, id);
   const toast = useToast();
   const wallet = useWallet();
-  const { session } = useAuth();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
 
@@ -106,17 +105,14 @@ function AgentPage() {
     .slice(0, 2);
   const capLeft = Math.max(0, agent.delegationCap - agent.delegationFilled);
   const delegateMax = Math.max(1, Math.min(500, capLeft));
-  const authHeaders = session?.access_token
-    ? { authorization: `Bearer ${session.access_token}` }
-    : undefined;
-
   const delegate = async () => {
+    const authHeaders = walletSessionHeaders(wallet.address);
     if (!wallet.connected) {
       toast.push("Sign in with a wallet before delegating");
       return;
     }
     if (!authHeaders) {
-      toast.push("Sign in before creating a delegation intent");
+      toast.push("Open Sign in and sign the wallet message before delegating");
       return;
     }
     if (!wallet.chainOk) {

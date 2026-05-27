@@ -23,6 +23,7 @@ artifacts
 cache
 coverage
 typechain-types
+.sentra-runtime/
 
 # Wrangler / Cloudflare
 .wrangler/
