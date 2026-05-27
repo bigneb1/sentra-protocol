@@ -17,6 +17,7 @@ import {
   sentraAgentRegistryAbi,
   sentraCallAccessAbi,
   sentraDelegationVaultAbi,
+  sentraPredictionRegistryAbi,
   sentraStakeVaultAbi,
 } from "@/contracts/sentraProtocol";
 import type { Json } from "@/integrations/supabase/types";
@@ -39,6 +40,8 @@ import {
   computeReputationDelta,
 } from "@/lib/sentraScoring";
 import type { AgentStrategy } from "@/lib/agentTypes";
+import { SENTRA_PAID_CALL_PRICE_USDC } from "@/lib/sentraConstants";
+import { runtimeUpstreamBaseUrl } from "@/lib/runtimeProxy";
 
 const strategies = ["Macro", "Sports", "Contrarian", "Yield", "Tech", "Custom"] as const;
 
@@ -211,6 +214,10 @@ function hashText(value: string) {
   return keccak256(toHex(value));
 }
 
+function hashId(value: string) {
+  return keccak256(toHex(value));
+}
+
 function callAccessId(callId: string) {
   return `0x${callId.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
 }
@@ -221,6 +228,10 @@ function isUuid(value: string) {
 
 function callPriceUnits(price: number) {
   return parseUnits(price.toFixed(6), 6);
+}
+
+function runtimeWriteBaseUrl() {
+  return runtimeUpstreamBaseUrl();
 }
 
 async function runtimeFullCall(callId: string): Promise<{
@@ -237,8 +248,7 @@ async function runtimeFullCall(callId: string): Promise<{
   subscriptionCost: number;
   isFreePreview: boolean;
 }> {
-  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
-  const baseUrl = runtimeBaseUrl();
+  const baseUrl = runtimeWriteBaseUrl();
   const secret = process.env.SENTRA_AGENT_WORKER_SECRET ?? process.env.SENTRA_RUNTIME_SECRET;
   if (!baseUrl) throw new Error("SENTRA agent runtime URL is not configured");
   if (!secret) throw new Error("SENTRA_AGENT_WORKER_SECRET is required for full runtime calls");
@@ -273,6 +283,14 @@ async function runtimePreviewCall(callId: string) {
   const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
   const runtime = await loadRuntimeDataset();
   return runtime?.earningsCalls.find((item) => item.id === callId) ?? null;
+}
+
+async function loadRuntimeDatasetDirect() {
+  const response = await fetch(`${runtimeWriteBaseUrl()}/dataset`, {
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) return null;
+  return (await response.json()) as import("@/lib/runtimeDataset").RuntimeDataset;
 }
 
 async function verifyOnchainCallUnlock(input: {
@@ -316,7 +334,9 @@ async function verifyOnchainCallUnlock(input: {
     throw new Error("Unlock transaction payer does not match the connected wallet");
   }
   if (unlockedEvent.price !== expectedPrice) {
-    throw new Error("Unlock transaction amount does not match the required 0.01 USDC");
+    throw new Error(
+      `Unlock transaction amount does not match the required ${SENTRA_PAID_CALL_PRICE_USDC.toFixed(1)} USDC`,
+    );
   }
 
   const hasAccess = await arcPublicClient.readContract({
@@ -370,6 +390,10 @@ function agentMetadataUri(agentId: string) {
   return `${publicAppUrl()}/api/agent-metadata/${agentId}`;
 }
 
+function publicRuntimeMetadataUri(agentId: string) {
+  return `${publicAppUrl()}/api/runtime/metadata/${agentId}`;
+}
+
 function runtimeRequestHeaders() {
   const secret = process.env.SENTRA_AGENT_WORKER_SECRET ?? process.env.SENTRA_RUNTIME_SECRET;
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -393,9 +417,9 @@ async function runtimeCreateAgent(input: {
   delegationCapUsdc: number;
   riskLimits: Agent["riskLimits"];
   autoCalls: boolean;
+  imageUrl?: string | null;
 }) {
-  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
-  const baseUrl = runtimeBaseUrl();
+  const baseUrl = runtimeWriteBaseUrl();
   if (!baseUrl) throw new Error("SENTRA agent runtime URL is not configured");
 
   const response = await fetch(`${baseUrl}/agents`, {
@@ -429,8 +453,7 @@ async function runtimeRecordAgentDeployment(input: {
   stakeTxHash?: `0x${string}`;
   stakeUsdc: number;
 }) {
-  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
-  const baseUrl = runtimeBaseUrl();
+  const baseUrl = runtimeWriteBaseUrl();
   if (!baseUrl) throw new Error("SENTRA agent runtime URL is not configured");
 
   const response = await fetch(
@@ -456,8 +479,7 @@ async function runtimeRecordDelegation(input: {
   txHash?: `0x${string}`;
   status: "pending" | "active";
 }) {
-  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
-  const baseUrl = runtimeBaseUrl();
+  const baseUrl = runtimeWriteBaseUrl();
   if (!baseUrl) return null;
 
   const response = await fetch(`${baseUrl}/delegations`, {
@@ -476,8 +498,7 @@ async function runtimeRecordWithdrawal(input: {
   txHash?: `0x${string}`;
   status: "created" | "confirmed";
 }) {
-  const { runtimeBaseUrl } = await import("@/lib/runtimeDataset");
-  const baseUrl = runtimeBaseUrl();
+  const baseUrl = runtimeWriteBaseUrl();
   if (!baseUrl) return null;
 
   const response = await fetch(`${baseUrl}/withdrawals`, {
@@ -487,6 +508,30 @@ async function runtimeRecordWithdrawal(input: {
   });
   if (!response.ok) return null;
   return (await response.json()) as { status: "recorded"; transactionId: string };
+}
+
+async function runtimeScheduleMarket(input: {
+  agentId: string;
+  ownerAddress: `0x${string}`;
+  marketId: string;
+  marketQuestion: string;
+  scheduledFor: string;
+  probabilityBps: number;
+  confidenceBps: number;
+}) {
+  const baseUrl = runtimeWriteBaseUrl();
+  if (!baseUrl) throw new Error("SENTRA agent runtime URL is not configured");
+
+  const response = await fetch(`${baseUrl}/schedules`, {
+    method: "POST",
+    headers: runtimeRequestHeaders(),
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Runtime schedule failed (${response.status}): ${body.slice(0, 200)}`);
+  }
+  return (await response.json()) as { status: "scheduled"; scheduleId: string };
 }
 
 function sameAddress(a: string | null | undefined, b: string | null | undefined) {
@@ -800,7 +845,7 @@ function recordFromJson(value: Json | unknown): Record<string, unknown> {
 function earningsCallPrice(call: { is_free_preview: boolean; price_usdc: number | null }) {
   if (call.is_free_preview) return 0;
   const parsed = Number(call.price_usdc ?? 0);
-  return parsed > 0 ? parsed : 0.01;
+  return parsed > 0 ? parsed : SENTRA_PAID_CALL_PRICE_USDC;
 }
 
 function jsonRecord(value: unknown): Record<string, unknown> {
@@ -913,6 +958,7 @@ export const registerAgentAction = createServerFn({ method: "POST" })
       name: z.string().min(2).max(32),
       strategy: z.enum(strategies),
       description: z.string().max(200).optional(),
+      imageUrl: z.string().max(5000).optional().nullable(),
       stakeUsdc: money,
       delegationCapUsdc: money,
       minConfidenceBps: z.number().int().min(0).max(10_000),
@@ -932,6 +978,7 @@ export const registerAgentAction = createServerFn({ method: "POST" })
       agent_type: "sentra_prediction_agent",
       strategy: data.strategy,
       version: "1.0.0",
+      image: data.imageUrl ?? null,
     };
     const metadataHash = hashJson(metadata);
     const registryAgentId = hashText(`sentra:${userId}:${slug}:${crypto.randomUUID()}`);
@@ -947,6 +994,7 @@ export const registerAgentAction = createServerFn({ method: "POST" })
         name: data.name,
         strategy: data.strategy,
         description: data.description ?? "",
+        imageUrl: data.imageUrl ?? null,
         registryAgentId,
         metadataHash,
         strategyHash,
@@ -961,7 +1009,7 @@ export const registerAgentAction = createServerFn({ method: "POST" })
         agentId: runtime.agentId,
         slug: runtime.slug,
         registryAgentId,
-        metadataUri: runtime.metadataUri,
+        metadataUri: publicRuntimeMetadataUri(runtime.slug),
         metadataHash,
         strategyHash,
         riskHash,
@@ -982,6 +1030,7 @@ export const registerAgentAction = createServerFn({ method: "POST" })
         name: data.name,
         strategy: data.strategy,
         description: data.description ?? null,
+        color: null,
         status: "draft",
         registry_agent_id: registryAgentId,
         metadata_uri: null,
@@ -1100,15 +1149,14 @@ export const recordAgentOnchainDeploymentAction = createServerFn({ method: "POST
     const supabaseAdmin = await getOptionalSupabaseAdmin();
 
     if (!supabaseAdmin) {
-      const { loadRuntimeDataset, runtimeBaseUrl } = await import("@/lib/runtimeDataset");
-      const runtime = await loadRuntimeDataset();
+      const runtime = await loadRuntimeDatasetDirect();
       const runtimeAgent = runtime?.agents.find(
         (item) => item.databaseId === data.agentId || item.id === data.agentId,
       );
       const registryAgentId = requireBytes32(runtimeAgent?.registryAgentId, "Agent registry id");
       await verifyAgentDeploymentOnArc({
         registryAgentId,
-        metadataUri: runtimeAgent ? `${runtimeBaseUrl()}/metadata/${runtimeAgent.id}` : null,
+        metadataUri: runtimeAgent ? publicRuntimeMetadataUri(runtimeAgent.id) : null,
         ownerAddress: data.ownerAddress,
         agentWalletAddress: data.agentWalletAddress ?? runtimeAgent?.walletAddress ?? null,
         arcErc8004Id: data.arcErc8004Id,
@@ -1201,8 +1249,7 @@ export const createAgentWalletAction = createServerFn({ method: "POST" })
     const { userId } = getAuthContext(context);
     const supabaseAdmin = await getOptionalSupabaseAdmin();
     if (!supabaseAdmin) {
-      const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
-      const runtime = await loadRuntimeDataset();
+      const runtime = await loadRuntimeDatasetDirect();
       const agent = runtime?.agents.find(
         (item) => item.databaseId === data.agentId || item.id === data.agentId,
       );
@@ -1362,8 +1409,7 @@ export const createDelegationIntentAction = createServerFn({ method: "POST" })
     const supabaseAdmin = await getOptionalSupabaseAdmin();
     const contracts = getProtocolContracts();
     if (!supabaseAdmin) {
-      const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
-      const runtime = await loadRuntimeDataset();
+      const runtime = await loadRuntimeDatasetDirect();
       const runtimeAgent = runtime?.agents.find(
         (item) => item.databaseId === data.agentId || item.id === data.agentId,
       );
@@ -1684,12 +1730,15 @@ export const submitPredictionAction = createServerFn({ method: "POST" })
       resolvesAt: z.string().datetime().optional(),
       signedPayload: z.record(z.unknown()).default({}),
       signatureHash: bytes32.optional(),
+      txHash: txHashSchema.optional(),
     }),
   )
   .handler(async ({ data, context }) => {
     const { userId } = getAuthContext(context);
     const agent = await requireAgentOwner(data.agentId, userId);
     const supabaseAdmin = await getSupabaseAdmin();
+    const expiresAt =
+      data.resolvesAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const payload = {
       ...data.signedPayload,
       agentId: agent.id,
@@ -1697,11 +1746,55 @@ export const submitPredictionAction = createServerFn({ method: "POST" })
       question: data.question,
       probabilityBps: data.agentProbabilityBps,
       confidenceBps: data.confidenceBps,
-      resolvesAt: data.resolvesAt ?? null,
+      resolvesAt: expiresAt,
     };
     const predictionHash = hashJson(payload);
-    const expiresAt =
-      data.resolvesAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const predictionIdBytes = hashId(
+      `prediction:${agent.id}:${data.marketId}:${data.question}:${expiresAt}:${predictionHash}`,
+    );
+    const marketIdHash = hashId(data.marketId);
+    const signatureHash = data.signatureHash ?? hashText(stableJson(payload));
+    const resolvesAtSeconds = BigInt(Math.floor(new Date(expiresAt).getTime() / 1000));
+
+    if (data.txHash) {
+      const registryAgentId = requireBytes32(agent.registry_agent_id, "Agent registry id");
+      const predictionRegistry = requireContractAddress(
+        getProtocolContracts().predictionRegistry,
+        "Prediction registry",
+      );
+      const receipt = await requireSuccessfulReceipt(data.txHash, predictionRegistry);
+      const submittedEvent = findEventArgs<{
+        predictionId?: `0x${string}`;
+        agentId?: `0x${string}`;
+        marketId?: `0x${string}`;
+        predictionHash?: `0x${string}`;
+        signatureHash?: `0x${string}`;
+        confidenceBps?: number;
+        resolvesAt?: bigint;
+      }>(receipt, predictionRegistry, sentraPredictionRegistryAbi, "PredictionSubmitted");
+      if (!submittedEvent) throw new Error("PredictionSubmitted event not found in tx");
+      if (submittedEvent.predictionId?.toLowerCase() !== predictionIdBytes.toLowerCase()) {
+        throw new Error("Prediction transaction used a different prediction id");
+      }
+      if (submittedEvent.agentId?.toLowerCase() !== registryAgentId.toLowerCase()) {
+        throw new Error("Prediction transaction used a different agent id");
+      }
+      if (submittedEvent.marketId?.toLowerCase() !== marketIdHash.toLowerCase()) {
+        throw new Error("Prediction transaction used a different market id");
+      }
+      if (submittedEvent.predictionHash?.toLowerCase() !== predictionHash.toLowerCase()) {
+        throw new Error("Prediction transaction used a different payload hash");
+      }
+      if (submittedEvent.signatureHash?.toLowerCase() !== signatureHash.toLowerCase()) {
+        throw new Error("Prediction transaction used a different signature hash");
+      }
+      if (BigInt(submittedEvent.confidenceBps ?? 0) !== BigInt(data.confidenceBps)) {
+        throw new Error("Prediction transaction confidence mismatch");
+      }
+      if (submittedEvent.resolvesAt !== resolvesAtSeconds) {
+        throw new Error("Prediction transaction resolve time mismatch");
+      }
+    }
 
     const { data: prediction, error } = await supabaseAdmin
       .from("predictions")
@@ -1710,7 +1803,7 @@ export const submitPredictionAction = createServerFn({ method: "POST" })
         market_id: data.marketId,
         question: data.question,
         prediction_hash: predictionHash,
-        signature: data.signatureHash ?? hashText(stableJson(payload)),
+        signature: signatureHash,
         agent_prob: data.agentProbabilityBps / 10_000,
         market_prob:
           data.marketProbabilityBps === undefined ? null : data.marketProbabilityBps / 10_000,
@@ -1729,7 +1822,63 @@ export const submitPredictionAction = createServerFn({ method: "POST" })
       recordId: prediction.id,
       data: prediction,
     });
-    return { status: "submitted" as const, predictionId: prediction.id, predictionHash };
+    return {
+      status: "submitted" as const,
+      predictionId: prediction.id,
+      predictionIdBytes,
+      predictionHash,
+      marketIdHash,
+      signatureHash,
+      resolvesAtSeconds: resolvesAtSeconds.toString(),
+    };
+  });
+
+export const scheduleMarketAction = createServerFn({ method: "POST" })
+  .middleware([walletAuthMiddleware])
+  .inputValidator(
+    z.object({
+      agentId: z.string().min(1).max(128),
+      marketId: z.string().min(1).max(128),
+      marketQuestion: z.string().min(4).max(240),
+      scheduledFor: z.string().datetime(),
+      probabilityBps: z.number().int().min(0).max(10_000),
+      confidenceBps: z.number().int().min(0).max(10_000),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    const { walletAddress, userId } = getAuthContext(context);
+    const supabaseAdmin = await getOptionalSupabaseAdmin();
+    const scheduledAt = new Date(data.scheduledFor);
+    if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+      throw new Error("Schedule time must be in the future");
+    }
+
+    if (!supabaseAdmin) {
+      return runtimeScheduleMarket({
+        agentId: data.agentId,
+        ownerAddress: walletAddress,
+        marketId: data.marketId,
+        marketQuestion: data.marketQuestion,
+        scheduledFor: scheduledAt.toISOString(),
+        probabilityBps: data.probabilityBps,
+        confidenceBps: data.confidenceBps,
+      });
+    }
+
+    const agent = await requireAgentOwner(data.agentId, userId);
+    await audit("market_action.scheduled", {
+      actorId: userId,
+      table: "agents",
+      recordId: agent.id,
+      data: {
+        marketId: data.marketId,
+        marketQuestion: data.marketQuestion,
+        scheduledFor: scheduledAt.toISOString(),
+        probabilityBps: data.probabilityBps,
+        confidenceBps: data.confidenceBps,
+      },
+    });
+    return { status: "scheduled" as const, scheduleId: crypto.randomUUID() };
   });
 
 export const resolvePredictionAction = createServerFn({ method: "POST" })
@@ -1918,7 +2067,7 @@ export const publishEarningsCallAction = createServerFn({ method: "POST" })
     const { userId } = getAuthContext(context);
     const agent = await requireAgentOwner(data.agentId, userId);
     const supabaseAdmin = await getSupabaseAdmin();
-    const priceUsdc = data.isFreePreview ? 0 : 0.01;
+    const priceUsdc = data.isFreePreview ? 0 : SENTRA_PAID_CALL_PRICE_USDC;
     const contentHash = hashJson({
       agentId: agent.id,
       callDate: data.callDate,
@@ -2001,8 +2150,7 @@ export const prepareCallUnlockAction = createServerFn({ method: "POST" })
       }
     }
 
-    const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
-    const runtime = await loadRuntimeDataset();
+    const runtime = await loadRuntimeDatasetDirect();
     const call = runtime?.earningsCalls.find((item) => item.id === data.callId);
     if (!call) throw new Error("Call not found");
     if (call.isFreePreview || call.subscriptionCost <= 0) {
@@ -2031,7 +2179,9 @@ export const unlockCallAction = createServerFn({ method: "POST" })
     const { userId } = await requireWalletAuth();
     const runtimeCall = await runtimePreviewCall(data.callId);
     if (runtimeCall) {
-      const price = runtimeCall.isFreePreview ? 0 : runtimeCall.subscriptionCost || 0.01;
+      const price = runtimeCall.isFreePreview
+        ? 0
+        : runtimeCall.subscriptionCost || SENTRA_PAID_CALL_PRICE_USDC;
       if (runtimeCall.isFreePreview || price <= 0) {
         return { status: "unlocked" as const, unlockId: `runtime:${runtimeCall.id}` };
       }
@@ -2200,7 +2350,9 @@ export const getUnlockedCallAction = createServerFn({ method: "POST" })
     const { userId, walletAddress } = await requireWalletAuth();
     const runtimeCall = await runtimePreviewCall(data.callId);
     if (runtimeCall) {
-      const price = runtimeCall.isFreePreview ? 0 : runtimeCall.subscriptionCost || 0.01;
+      const price = runtimeCall.isFreePreview
+        ? 0
+        : runtimeCall.subscriptionCost || SENTRA_PAID_CALL_PRICE_USDC;
       const canRead =
         runtimeCall.isFreePreview ||
         price <= 0 ||

@@ -2,9 +2,29 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type CallPlaybackState = "idle" | "playing" | "paused" | "unsupported";
 
+function speechChunks(text: string) {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return [];
+  const sentences = cleaned.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [cleaned];
+  const chunks: string[] = [];
+  let current = "";
+  for (const sentence of sentences) {
+    const next = `${current} ${sentence}`.trim();
+    if (next.length > 220 && current) {
+      chunks.push(current);
+      current = sentence.trim();
+    } else {
+      current = next;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
 export function useCallPlayback(text: string, audioUrl?: string | null) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance[]>([]);
+  const chunkIndexRef = useRef(0);
   const [state, setState] = useState<CallPlaybackState>("idle");
 
   const supported = useMemo(
@@ -25,12 +45,14 @@ export function useCallPlayback(text: string, audioUrl?: string | null) {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
-    utteranceRef.current = null;
+    utteranceRef.current = [];
+    chunkIndexRef.current = 0;
     setState(supported ? "idle" : "unsupported");
   }, [supported]);
 
   const play = useCallback(() => {
-    if (!supported) {
+    const chunks = speechChunks(text);
+    if (!supported || (!audioUrl && chunks.length === 0)) {
       setState("unsupported");
       return;
     }
@@ -52,13 +74,28 @@ export function useCallPlayback(text: string, audioUrl?: string | null) {
     }
 
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.94;
-    utterance.pitch = 0.92;
-    utterance.onend = () => setState("idle");
-    utterance.onerror = () => setState("idle");
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
+    chunkIndexRef.current = 0;
+    const voices = window.speechSynthesis.getVoices();
+    const voice =
+      voices.find(
+        (item) => /en/i.test(item.lang) && /female|samantha|aria|jenny/i.test(item.name),
+      ) ??
+      voices.find((item) => /en/i.test(item.lang)) ??
+      null;
+    const utterances = chunks.map((chunk, index) => {
+      const utterance = new SpeechSynthesisUtterance(chunk);
+      if (voice) utterance.voice = voice;
+      utterance.volume = 1;
+      utterance.rate = 0.92;
+      utterance.pitch = 0.98;
+      utterance.onend = () => {
+        if (index === utterances.length - 1) setState("idle");
+      };
+      utterance.onerror = () => setState("idle");
+      return utterance;
+    });
+    utteranceRef.current = utterances;
+    utterances.forEach((utterance) => window.speechSynthesis.speak(utterance));
     setState("playing");
   }, [audioUrl, supported, text]);
 

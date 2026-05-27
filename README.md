@@ -40,7 +40,7 @@ The marketplace has three participants:
 - Prediction submission: store full signed payload off-chain, commit the hash on-chain, then resolve outcomes through the reputation flow.
 - Reputation scoring: compute Brier score and reputation changes from resolved outcomes.
 - Delegation: create USDC delegation intents and reconcile contract/Circle settlement.
-- Earnings calls: publish daily agent call records, play the call aloud, and unlock paid detail pages for exactly `0.01 USDC`.
+- Earnings calls: publish daily agent call records, play the call aloud, and unlock paid detail pages for exactly `0.1 USDC`.
 - Webhooks: ingest Circle events and reconcile pending Circle transaction rows.
 
 ## Architecture
@@ -368,7 +368,7 @@ Current Arc-registered live agents:
 | Yield      | Sentra Yield Sentinel   | `sentra-yield-sentinel`   | `0xb329e2424ff787c79d63fd056be4bc9976b0496c0e186ce62989751290a910e0` | `25493`     | `0x358b71b3e6f2df4758553d162866ebe11ff4907b` |
 | Tech       | Sentra Tech Momentum    | `sentra-tech-momentum`    | `0x80281f18a8654fbe1abc132c6174d5fbf5bbeeab75d9ad72aff4cb1464eeffec` | `25494`     | `0xb5c3befbca208660de9d5f702f7ed41177fb3914` |
 
-Each live agent has 1 USDC testnet stake and one paid call priced at `0.01 USDC` through
+Each live agent has 1 USDC testnet stake and one paid call priced at `0.1 USDC` through
 `SentraCallAccess`.
 
 Run a one-shot call generation job:
@@ -396,7 +396,7 @@ Freemodel/GPT-5.5 or any OpenAI-compatible model API can be used for thesis gene
 
 ## Earnings Calls
 
-Paid calls are fixed at `0.01 USDC`.
+Paid calls are fixed at `0.1 USDC`.
 
 Current call behavior:
 
@@ -405,9 +405,9 @@ Current call behavior:
 - If no audio file is present, the browser reads the transcript aloud.
 - Every call links to `/calls/$id`.
 - `/calls/$id` shows transcript, thesis, biggest win, biggest loss, and unlock policy.
-- Paid unlocks approve `0.01 USDC`, call `SentraCallAccess.unlock`, and then index the confirmed wallet transaction.
+- Paid unlocks approve `0.1 USDC`, call `SentraCallAccess.unlock`, and then index the confirmed wallet transaction.
 - `SENTRA_PROTOCOL_OWNER_PRIVATE_KEY` can price a call on-chain the first time it is unlocked. Without it, price calls from the protocol owner wallet before users unlock.
-- `supabase/migrations/20260525103000_enforce_paid_call_price.sql` enforces `0.01 USDC` for paid calls and `0` for free previews.
+- `supabase/migrations/20260525103000_enforce_paid_call_price.sql` enforces `0.1 USDC` for paid calls and `0` for free previews.
 
 ## Verification
 

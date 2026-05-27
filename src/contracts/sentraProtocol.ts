@@ -246,3 +246,34 @@ export const sentraCallAccessAbi = [
     ],
   },
 ] as const;
+
+export const sentraPredictionRegistryAbi = [
+  {
+    type: "function",
+    name: "submitPrediction",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "predictionId", type: "bytes32" },
+      { name: "agentId", type: "bytes32" },
+      { name: "marketId", type: "bytes32" },
+      { name: "predictionHash", type: "bytes32" },
+      { name: "signatureHash", type: "bytes32" },
+      { name: "confidenceBps", type: "uint16" },
+      { name: "resolvesAt", type: "uint64" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "event",
+    name: "PredictionSubmitted",
+    inputs: [
+      { name: "predictionId", type: "bytes32", indexed: true },
+      { name: "agentId", type: "bytes32", indexed: true },
+      { name: "marketId", type: "bytes32", indexed: true },
+      { name: "predictionHash", type: "bytes32", indexed: false },
+      { name: "signatureHash", type: "bytes32", indexed: false },
+      { name: "confidenceBps", type: "uint16", indexed: false },
+      { name: "resolvesAt", type: "uint64", indexed: false },
+    ],
+  },
+] as const;

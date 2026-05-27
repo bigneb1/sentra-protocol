@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { ARC_CIRCLE_BLOCKCHAIN, ARC_ERC8004_REGISTRIES, ARC_USDC_ADDRESS } from "@/lib/arcTestnet";
+import { SENTRA_PAID_CALL_PRICE_USDC } from "@/lib/sentraConstants";
 
 export const Route = createFileRoute("/api/agent-metadata/$id")({
   server: {
@@ -64,7 +65,7 @@ export const Route = createFileRoute("/api/agent-metadata/$id")({
             earningsCalls: {
               enabled: config?.earnings_call_enabled ?? true,
               tier: config?.earnings_call_tier ?? "paid",
-              priceUsdc: 0.01,
+              priceUsdc: SENTRA_PAID_CALL_PRICE_USDC,
             },
             chain: {
               blockchain: ARC_CIRCLE_BLOCKCHAIN,

@@ -98,12 +98,6 @@ function Landing() {
           >
             Arena
           </Link>
-          <Link
-            to="/register"
-            className="px-4 py-1.5 rounded-md border border-primary text-primary-light hover:bg-primary/10 text-sm transition"
-          >
-            Launch App
-          </Link>
         </div>
       </header>
 
@@ -232,7 +226,7 @@ function Landing() {
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <AgentAvatar name={a.name} color={a.color} size={44} />
+                  <AgentAvatar name={a.name} color={a.color} imageUrl={a.imageUrl} size={44} />
                   <div>
                     <div className="font-mono text-lg">{a.name}</div>
                     <div className="mt-1">
@@ -348,7 +342,7 @@ function Landing() {
                 <span className="text-gold">
                   {latestCall
                     ? `${latestCall.subscriptionCost.toFixed(2)} USDC to unlock · ${Math.floor(latestCall.durationSeconds / 60)}:${String(latestCall.durationSeconds % 60).padStart(2, "0")}`
-                    : "0.01 USDC paid calls when published"}
+                    : "0.1 USDC paid calls when published"}
                 </span>
               </div>
             </div>
@@ -370,7 +364,7 @@ function Landing() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <Logo size={22} />
           <p className="text-xs text-muted-foreground text-center md:text-right">
-            Built on Arc Network with Circle Infrastructure. Agora Agents Hackathon 2026.
+            Built on Arc Network with Circle Infrastructure.
           </p>
         </div>
       </footer>

@@ -5,6 +5,7 @@ import { sentraDelegationVaultAbi, sentraProtocolContracts } from "@/contracts/s
 import type { Tables } from "@/integrations/supabase/types";
 import type { AgentStrategy } from "@/lib/agentTypes";
 import { loadRuntimeDataset } from "@/lib/runtimeDataset";
+import { SENTRA_PAID_CALL_PRICE_USDC } from "@/lib/sentraConstants";
 
 export type Strategy = Exclude<AgentStrategy, "Custom">;
 
@@ -35,6 +36,7 @@ export interface Agent {
   createdAt: string;
   followers: number;
   color: string;
+  imageUrl: string | null;
   riskLimits: {
     maxDailyLossUsdc: number;
     maxOpenPositions: number;
@@ -65,6 +67,7 @@ export interface Prediction {
   outcome: null | "correct" | "wrong";
   reasoning: string;
   submittedAt: string;
+  txHash?: string | null;
 }
 
 export interface EarningsCall {
@@ -97,6 +100,7 @@ export interface DelegationPosition {
   status: Tables<"delegations">["status"];
   entryTxHash: string | null;
   exitTxHash: string | null;
+  walletAddress?: string | null;
 }
 
 export interface VaultTransaction {
@@ -108,6 +112,18 @@ export interface VaultTransaction {
   status: string;
 }
 
+export interface ScheduledMarketAction {
+  id: string;
+  agentId: string;
+  marketId: string;
+  marketQuestion: string;
+  scheduledFor: string;
+  action: "submit_prediction";
+  probabilityBps: number;
+  confidenceBps: number;
+  status: "scheduled" | "due" | "completed" | "cancelled";
+}
+
 export type SentraDataset = {
   agents: Agent[];
   predictions: Prediction[];
@@ -115,6 +131,7 @@ export type SentraDataset = {
   delegations: DelegationPosition[];
   vaultTransactions: VaultTransaction[];
   activityFeed: string[];
+  scheduledMarkets?: ScheduledMarketAction[];
 };
 
 const colors = [
@@ -130,7 +147,7 @@ const colors = [
 
 const arcClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(),
+  transport: http(arcTestnet.rpcUrls.default.http[0]),
 });
 
 const isStrategy = (strategy: AgentStrategy): strategy is Strategy => strategy !== "Custom";
@@ -262,6 +279,7 @@ function mapAgent(
     createdAt: asDay(agent.created_at),
     followers: agent.followers_count,
     color: agent.color ?? colorFor(agent.id, index),
+    imageUrl: null,
     riskLimits: {
       maxDailyLossUsdc: num(activeConfig?.max_daily_loss_usdc),
       maxOpenPositions: num(activeConfig?.max_open_positions),
@@ -308,7 +326,7 @@ function mapPrediction(
 function callPrice(price: string | number | null | undefined, isFreePreview: boolean) {
   if (isFreePreview) return 0;
   const parsed = num(price);
-  return parsed > 0 ? parsed : 0.01;
+  return parsed > 0 ? parsed : SENTRA_PAID_CALL_PRICE_USDC;
 }
 
 function callAccessId(callId: string) {
@@ -374,6 +392,7 @@ function emptyDataset(): SentraDataset {
     delegations: [],
     vaultTransactions: [],
     activityFeed: [],
+    scheduledMarkets: [],
   };
 }
 
@@ -381,6 +400,30 @@ async function fallbackRuntimeDataset() {
   const runtime = await loadRuntimeDataset();
   if (runtime) return runtime;
   return emptyDataset();
+}
+
+async function mergeRuntimeDataset(dataset: SentraDataset) {
+  const runtime = await loadRuntimeDataset();
+  if (!runtime) return dataset;
+
+  const byId = <T extends { id: string }>(primary: T[], secondary: T[]) => {
+    const rows = new Map<string, T>();
+    secondary.forEach((item) => rows.set(item.id, item));
+    primary.forEach((item) => rows.set(item.id, item));
+    return [...rows.values()];
+  };
+
+  return {
+    agents: byId(runtime.agents, dataset.agents),
+    predictions: byId(runtime.predictions, dataset.predictions),
+    earningsCalls: byId(runtime.earningsCalls, dataset.earningsCalls).sort((a, b) =>
+      b.date.localeCompare(a.date),
+    ),
+    delegations: byId(runtime.delegations, dataset.delegations),
+    vaultTransactions: byId(runtime.vaultTransactions, dataset.vaultTransactions),
+    activityFeed: [...runtime.activityFeed, ...dataset.activityFeed],
+    scheduledMarkets: [...(runtime.scheduledMarkets ?? []), ...(dataset.scheduledMarkets ?? [])],
+  } satisfies SentraDataset;
 }
 
 function isRecoverableSupabaseReadError(error: { message?: string } | null | undefined) {
@@ -533,6 +576,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
       status: delegation.status,
       entryTxHash: delegation.tx_hash,
       exitTxHash: null,
+      walletAddress: null,
     }));
     const vaultTransactions = vaultTransactionRows.map((tx) => ({
       id: tx.id,
@@ -555,6 +599,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
       delegations,
       vaultTransactions,
       activityFeed,
+      scheduledMarkets: [],
     };
     if (
       dataset.agents.length === 0 &&
@@ -563,7 +608,7 @@ export async function loadSentraDataset(userId?: string | null): Promise<SentraD
     ) {
       return fallbackRuntimeDataset();
     }
-    return dataset;
+    return mergeRuntimeDataset(dataset);
   } catch (error) {
     if (isRecoverableSupabaseReadError(error as { message?: string })) {
       console.warn(

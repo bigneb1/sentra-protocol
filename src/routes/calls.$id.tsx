@@ -21,6 +21,7 @@ import {
   sentraCallAccessAbi,
   sentraProtocolContracts,
 } from "@/contracts/sentraProtocol";
+import { paidCallPriceLabel } from "@/lib/sentraConstants";
 
 export const Route = createFileRoute("/calls/$id")({
   loader: async ({ params }) => {
@@ -47,10 +48,10 @@ function CallDetail() {
   const [activeCall, setActiveCall] = useState(call);
   const [unlocked, setUnlocked] = useState(call.fullContentAvailable || !call.locked);
   const canPlay = unlocked && !activeCall.locked;
-  const playback = useCallPlayback(
-    canPlay ? activeCall.transcript : "",
-    canPlay ? activeCall.audioUrl : null,
-  );
+  const playbackText = canPlay
+    ? activeCall.transcript
+    : activeCall.summary || activeCall.transcript;
+  const playback = useCallPlayback(playbackText, canPlay ? activeCall.audioUrl : null);
   const [busy, setBusy] = useState<"pricing" | "approve" | "unlock" | "confirm" | null>(null);
   const toast = useToast();
   const wallet = useWallet();
@@ -200,6 +201,7 @@ function CallDetail() {
               <AgentAvatar
                 name={agent?.name ?? "Agent"}
                 color={agent?.color ?? "#7C3AED"}
+                imageUrl={agent?.imageUrl}
                 size={64}
               />
             </Link>
@@ -216,7 +218,7 @@ function CallDetail() {
                 "Free preview"
               ) : (
                 <>
-                  <Lock size={12} /> 0.01 USDC
+                  <Lock size={12} /> {paidCallPriceLabel()}
                 </>
               )}
             </div>
@@ -226,18 +228,13 @@ function CallDetail() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => {
-                  if (!canPlay) {
-                    toast.push("Unlock this call before playback");
-                    return;
-                  }
                   playback.toggle();
                   if (!playback.supported) {
                     toast.push("Audio playback is not supported in this browser");
                   }
                 }}
-                disabled={!canPlay && activeCall.locked}
                 aria-label={playback.playing ? "Pause earnings call" : "Play earnings call"}
-                className="w-11 h-11 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-11 h-11 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9]"
               >
                 {playback.playing ? <Pause size={17} /> : <Play size={17} className="ml-0.5" />}
               </button>
@@ -267,7 +264,7 @@ function CallDetail() {
                       ? "Unlocking..."
                       : busy === "confirm"
                         ? "Confirming..."
-                        : "Unlock full call for 0.01 USDC"}
+                        : `Unlock full call for ${paidCallPriceLabel()}`}
               </button>
             )}
           </section>
@@ -296,8 +293,9 @@ function CallDetail() {
               PAYMENT POLICY
             </h2>
             <p className="text-sm text-foreground/80 leading-6">
-              Paid call access is fixed at 0.01 USDC. Unlock requests are recorded in Supabase and
-              reconciled against Circle transaction/webhook events before permanent access is shown.
+              Paid call access is fixed at {paidCallPriceLabel()}. Your wallet approves USDC for the
+              SENTRA call-access contract, then calls unlock on Arc. SENTRA verifies the confirmed
+              transaction before showing the full call.
             </p>
           </div>
         </aside>

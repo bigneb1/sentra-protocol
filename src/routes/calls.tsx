@@ -25,6 +25,7 @@ import {
   sentraCallAccessAbi,
   sentraProtocolContracts,
 } from "@/contracts/sentraProtocol";
+import { paidCallPriceLabel } from "@/lib/sentraConstants";
 
 export const Route = createFileRoute("/calls")({
   head: () => ({
@@ -64,12 +65,12 @@ function Calls() {
         >
           <Lock size={16} className="text-primary-light" />
           <div className="flex-1 text-sm">
-            Unlock agent call archives with Gateway nanopayments. Payments are persisted to Supabase
-            after settlement.
+            Unlock agent call archives with Arc USDC. Your wallet approves the call contract, then
+            pays the fixed call price on-chain before the full report opens.
           </div>
           <button
             onClick={() => {
-              toast.push("Subscription intent queued");
+              toast.push("Pick a call below to unlock it on-chain");
               setBannerOpen(false);
             }}
             className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs hover:bg-[#6D28D9]"
@@ -142,10 +143,13 @@ function CallRow({ call, dataset }: { call: EarningsCall; dataset: SentraDataset
   const wallet = useWallet();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
-  const canPlay = unlocked && !activeCall.locked;
+  const canPlayFull = unlocked && !activeCall.locked;
+  const playbackText = canPlayFull
+    ? activeCall.transcript
+    : activeCall.summary || activeCall.transcript;
   const { playing, supported, toggle } = useCallPlayback(
-    canPlay ? activeCall.transcript : "",
-    canPlay ? activeCall.audioUrl : null,
+    playbackText,
+    canPlayFull ? activeCall.audioUrl : null,
   );
 
   const loadFullCall = async () => {
@@ -175,10 +179,6 @@ function CallRow({ call, dataset }: { call: EarningsCall; dataset: SentraDataset
   };
 
   const togglePlayback = () => {
-    if (!canPlay) {
-      toast.push("Unlock this call before playback");
-      return;
-    }
     toggle();
     if (!supported) toast.push("Audio playback is not supported in this browser");
   };
@@ -288,7 +288,12 @@ function CallRow({ call, dataset }: { call: EarningsCall; dataset: SentraDataset
           className="inline-flex"
           aria-label={`Open ${agent?.name ?? "agent"} profile`}
         >
-          <AgentAvatar name={agent?.name ?? "Agent"} color={agent?.color ?? "#7C3AED"} size={40} />
+          <AgentAvatar
+            name={agent?.name ?? "Agent"}
+            color={agent?.color ?? "#7C3AED"}
+            imageUrl={agent?.imageUrl}
+            size={40}
+          />
         </Link>
         <Link
           to="/calls/$id"
@@ -302,19 +307,18 @@ function CallRow({ call, dataset }: { call: EarningsCall; dataset: SentraDataset
           </div>
         </Link>
         <div className="flex-1 min-w-[180px]">
-          <Waveform playing={playing} blurred={!canPlay} bars={56} height={36} />
+          <Waveform playing={playing} blurred={!canPlayFull} bars={56} height={36} />
         </div>
         <button
           onClick={togglePlayback}
-          disabled={!canPlay && activeCall.locked}
           aria-label={playing ? "Pause earnings call" : "Play earnings call"}
-          className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9] transition disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-[#6D28D9] transition"
         >
           {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
         </button>
       </div>
 
-      {!canPlay ? (
+      {!canPlayFull ? (
         <>
           <p className="text-sm text-foreground/85 mt-4 line-clamp-3">{activeCall.transcript}</p>
           {activeCall.locked && (
@@ -348,7 +352,7 @@ function CallRow({ call, dataset }: { call: EarningsCall; dataset: SentraDataset
       )}
 
       <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <Score label="Price" value={activeCall.isFreePreview ? "Free" : "0.01 USDC"} />
+        <Score label="Price" value={activeCall.isFreePreview ? "Free" : paidCallPriceLabel()} />
         <Score label="PnL Summary" value={activeCall.pnlSummary || "Not reported"} />
         <Score label="Biggest Win" value={activeCall.biggestWin || "None logged"} tone="green" />
         <Score label="Biggest Loss" value={activeCall.biggestLoss || "None logged"} tone="red" />

@@ -12,12 +12,20 @@ import {
   LogIn,
   LogOut,
   BookOpen,
+  Network,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 
 import { useWallet, truncate } from "@/lib/wallet";
 import { clearWalletSession, readWalletSession } from "@/lib/walletSession";
+import {
+  ARC_CHAIN_ID,
+  ARC_EXPLORER,
+  ARC_NETWORK_NAME,
+  ARC_RPC_URL,
+  ARC_USDC_ADDRESS,
+} from "@/lib/arcTestnet";
 
 const nav = [
   { to: "/arena", label: "Arena", icon: Swords },
@@ -31,9 +39,10 @@ const nav = [
 
 export function AppLayout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const { connected, address, balance, disconnect } = useWallet();
+  const { connected, address, balance, chainOk, switchToArc, disconnect } = useWallet();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [walletSigned, setWalletSigned] = useState(false);
+  const [chainOpen, setChainOpen] = useState(false);
 
   useEffect(() => {
     const sync = () => setWalletSigned(Boolean(readWalletSession(address)));
@@ -56,6 +65,10 @@ export function AppLayout() {
   const disconnectWallet = () => {
     clearWalletSession();
     disconnect();
+  };
+  const openArc = () => {
+    if (!chainOk) switchToArc();
+    setChainOpen((value) => !value);
   };
 
   return (
@@ -137,18 +150,7 @@ export function AppLayout() {
         <header className="hidden md:flex items-center justify-between px-6 py-3 border-b border-border bg-background/80 backdrop-blur sticky top-0 z-30">
           <div />
           <div className="flex items-center gap-3">
-            <div
-              title="Running on Arc Network testnet. Sub-second finality. USDC-native fees."
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-              style={{
-                background: "rgba(249,115,22,0.12)",
-                color: "#F97316",
-                border: "1px solid rgba(249,115,22,0.3)",
-              }}
-            >
-              <span className="w-2 h-2 rounded-full bg-[#F97316] dot-pulse" />
-              Arc Testnet
-            </div>
+            <ArcChainButton chainOk={chainOk} open={chainOpen} onClick={openArc} />
             {connected && address ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-elevated border border-border text-xs">
                 <span className="w-2 h-2 rounded-full bg-[#10B981]" />
@@ -171,17 +173,7 @@ export function AppLayout() {
             <Logo size={22} />
           </Link>
           <div className="flex items-center gap-2">
-            <div
-              className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium"
-              style={{
-                background: "rgba(249,115,22,0.12)",
-                color: "#F97316",
-                border: "1px solid rgba(249,115,22,0.3)",
-              }}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#F97316] dot-pulse" />
-              Arc
-            </div>
+            <ArcChainButton compact chainOk={chainOk} open={chainOpen} onClick={openArc} />
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
               className="p-2"
@@ -275,6 +267,86 @@ export function AppLayout() {
           })}
         </nav>
       </div>
+    </div>
+  );
+}
+
+function ArcChainButton({
+  chainOk,
+  open,
+  compact = false,
+  onClick,
+}: {
+  chainOk: boolean;
+  open: boolean;
+  compact?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onClick}
+        title="Arc Testnet chain selector"
+        className={`flex items-center gap-2 rounded-full font-medium ${compact ? "px-2 py-1 text-[10px]" : "px-3 py-1.5 text-xs"}`}
+        style={{
+          background: "rgba(249,115,22,0.12)",
+          color: "#F97316",
+          border: "1px solid rgba(249,115,22,0.3)",
+        }}
+      >
+        <span className="w-5 h-5 rounded-full bg-[#F97316] text-[#12082A] inline-flex items-center justify-center">
+          <Network size={compact ? 11 : 12} />
+        </span>
+        {compact ? "Arc" : ARC_NETWORK_NAME}
+        <span
+          className={`w-2 h-2 rounded-full ${chainOk ? "bg-[#10B981] dot-pulse" : "bg-[#EF4444]"}`}
+        />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-[260px] rounded-md border border-border bg-card p-4 shadow-xl z-50 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-[#F97316] text-[#12082A] inline-flex items-center justify-center">
+              <Network size={17} />
+            </div>
+            <div>
+              <div className="font-mono text-sm text-foreground">{ARC_NETWORK_NAME}</div>
+              <div className="text-muted-foreground">Chain ID {ARC_CHAIN_ID}</div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2 text-muted-foreground">
+            <div className="flex justify-between gap-3">
+              <span>Token</span>
+              <span className="font-mono text-foreground">USDC</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span>USDC</span>
+              <span className="font-mono text-foreground truncate max-w-[150px]">
+                {ARC_USDC_ADDRESS}
+              </span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span>RPC</span>
+              <span className="font-mono text-foreground truncate max-w-[150px]">
+                {ARC_RPC_URL.replace(/^https?:\/\//, "")}
+              </span>
+            </div>
+          </div>
+          <a
+            href={ARC_EXPLORER}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 block rounded border border-primary px-3 py-2 text-center text-primary-light hover:bg-primary/10"
+          >
+            Open Explorer
+          </a>
+          {!chainOk && (
+            <div className="mt-3 rounded bg-[#EF4444]/10 px-3 py-2 text-[#FCA5A5]">
+              Wrong network. Click the Arc chip again to request Arc Testnet in your wallet.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -7,6 +7,8 @@ interface WalletState {
   connected: boolean;
   address: string | null;
   balance: number;
+  balanceLoading: boolean;
+  balanceError: boolean;
   chainOk: boolean;
   connect: () => void;
   disconnect: () => void;
@@ -21,7 +23,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const { disconnect } = useDisconnect();
   const { openConnectModal } = useConnectModal();
   const { switchChain } = useSwitchChain();
-  const { data: usdc } = useBalance({
+  const {
+    data: usdc,
+    isLoading: balanceLoading,
+    isError: balanceError,
+  } = useBalance({
     address,
     token: USDC_ADDRESS,
     chainId: arcTestnet.id,
@@ -33,12 +39,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connected: isConnected,
       address: address ?? null,
       balance: usdc ? Number(usdc.formatted) : 0,
+      balanceLoading,
+      balanceError,
       chainOk: chainId === arcTestnet.id,
       connect: () => openConnectModal?.(),
       disconnect: () => disconnect(),
       switchToArc: () => switchChain({ chainId: arcTestnet.id }),
     }),
-    [isConnected, address, usdc, chainId, openConnectModal, disconnect, switchChain],
+    [
+      isConnected,
+      address,
+      usdc,
+      balanceLoading,
+      balanceError,
+      chainId,
+      openConnectModal,
+      disconnect,
+      switchChain,
+    ],
   );
 
   return <WalletCtx.Provider value={value}>{children}</WalletCtx.Provider>;

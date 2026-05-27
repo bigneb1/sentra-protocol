@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { decodeEventLog, parseUnits, type Address, type TransactionReceipt } from "viem";
 import { usePublicClient, useWriteContract } from "wagmi";
 import { ChevronDown, Check, Shield, Wallet, KeyRound, Radio } from "lucide-react";
@@ -65,8 +65,9 @@ function Register() {
   const [strategy, setStrategy] = useState<Strategy>("Macro");
   const [desc, setDesc] = useState("");
   const [colorIdx, setColorIdx] = useState(0);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
   const [stake, setStake] = useState(1);
-  const [approved, setApproved] = useState(false);
   const [conf, setConf] = useState(70);
   const [maxActive, setMaxActive] = useState(5);
   const [cap, setCap] = useState(10000);
@@ -80,6 +81,42 @@ function Register() {
   const [deployedSlug, setDeployedSlug] = useState<string | null>(null);
   const [deployMessage, setDeployMessage] = useState<string>("");
   const [deployStage, setDeployStage] = useState<string>("");
+  const uploadRef = useRef<HTMLInputElement | null>(null);
+
+  const generateImage = async () => {
+    if (!name.trim()) {
+      toast.push("Add an agent name before generating an image");
+      return;
+    }
+    setImageBusy(true);
+    try {
+      const response = await fetch("/api/generate-agent-image", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, description: desc, strategy }),
+      });
+      const body = (await response.json()) as { imageUrl?: string; error?: string };
+      if (!response.ok || !body.imageUrl) throw new Error(body.error ?? "Image generation failed");
+      setImageUrl(body.imageUrl);
+      toast.push("Agent image generated");
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : "Image generation failed");
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const uploadImage = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.push("Upload an image file");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setImageUrl(String(reader.result));
+    reader.onerror = () => toast.push("Image upload failed");
+    reader.readAsDataURL(file);
+  };
 
   const deploy = async () => {
     const authHeaders = walletSessionHeaders(wallet.address);
@@ -112,6 +149,7 @@ function Register() {
           name,
           strategy,
           description: desc,
+          imageUrl,
           stakeUsdc: stake,
           delegationCapUsdc: publicDel ? cap : 0,
           minConfidenceBps: conf * 100,
@@ -309,19 +347,37 @@ function Register() {
               />
             </Field>
             <div>
-              <div className="text-xs text-muted-foreground mb-2">Avatar preview</div>
+              <div className="text-xs text-muted-foreground mb-2">Agent image</div>
               <div className="flex items-center gap-3">
                 <div
-                  className="rounded-full w-16 h-16 flex items-center justify-center font-mono text-2xl text-white"
+                  className="rounded-full w-16 h-16 flex items-center justify-center font-mono text-2xl text-white overflow-hidden"
                   style={{ background: colors[colorIdx] }}
                 >
-                  {(name || "A").charAt(0).toUpperCase()}
+                  {imageUrl ? (
+                    <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    (name || "A").charAt(0).toUpperCase()
+                  )}
                 </div>
+                <input
+                  ref={uploadRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => uploadImage(event.target.files?.[0] ?? null)}
+                />
                 <button
-                  onClick={() => setColorIdx((i) => (i + 1) % colors.length)}
+                  onClick={generateImage}
+                  disabled={imageBusy}
                   className="px-3 py-1.5 rounded border border-primary text-primary-light hover:bg-primary/10 text-sm"
                 >
-                  Regenerate
+                  {imageBusy ? "Generating..." : "Generate"}
+                </button>
+                <button
+                  onClick={() => uploadRef.current?.click()}
+                  className="px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-elevated text-sm"
+                >
+                  Upload
                 </button>
               </div>
             </div>
@@ -363,26 +419,10 @@ function Register() {
                 </p>
               )}
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setApproved(true)}
-                disabled={approved}
-                className={`flex-1 py-2.5 rounded text-sm transition ${approved ? "bg-[#10B981]/20 text-[#10B981]" : "border border-primary text-primary-light hover:bg-primary/10"}`}
-              >
-                {approved ? (
-                  <>
-                    <Check size={14} className="inline mr-1" /> USDC Approved
-                  </>
-                ) : (
-                  "Approve USDC"
-                )}
-              </button>
-              <button
-                disabled={!approved}
-                className="flex-1 py-2.5 rounded bg-primary text-primary-foreground hover:bg-[#6D28D9] text-sm disabled:opacity-40"
-              >
-                Stake & Register
-              </button>
+            <div className="sentra-card !shadow-none p-4 text-xs text-muted-foreground leading-relaxed">
+              Approval and staking are submitted in Step 4 after the ERC-8004 identity and SENTRA
+              registry transaction are ready. Your wallet will show the USDC approval first, then
+              the stake deposit.
             </div>
           </div>
         )}
@@ -461,6 +501,7 @@ function Register() {
                 <div className="sentra-card !shadow-none p-4 space-y-2 text-sm">
                   <Row k="Name" v={name || "—"} />
                   <Row k="Strategy" v={strategy} />
+                  <Row k="Image" v={imageUrl ? "Custom image ready" : "Initial avatar"} />
                   <Row k="Stake" v={`${stake} USDC`} />
                   <Row k="Confidence threshold" v={`${conf}%`} />
                   <Row k="Max active" v={String(maxActive)} />
@@ -556,7 +597,7 @@ function Register() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
       <div className="text-xs text-muted-foreground mb-1.5">{label}</div>

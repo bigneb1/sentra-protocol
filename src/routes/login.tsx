@@ -42,7 +42,11 @@ function Login() {
     try {
       if (!wallet.connected || !address) {
         wallet.connect();
-        toast.push("Choose a wallet, then sign the SENTRA login message");
+        if (typeof window !== "undefined" && window.ethereum === undefined) {
+          toast.push("Install or open a wallet browser, then connect to SENTRA");
+        } else {
+          toast.push("Choose a wallet, then sign the SENTRA login message");
+        }
         return;
       }
 

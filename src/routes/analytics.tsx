@@ -499,7 +499,7 @@ function Analytics() {
                       params={{ id: a.id }}
                       className="flex items-center gap-2 hover:text-primary-light"
                     >
-                      <AgentAvatar name={a.name} color={a.color} size={26} />
+                      <AgentAvatar name={a.name} color={a.color} imageUrl={a.imageUrl} size={26} />
                       <span className="font-medium">{a.name}</span>
                     </Link>
                   </td>
@@ -565,7 +565,7 @@ function Analytics() {
               >
                 <div className="font-mono text-muted-foreground">{i + 1}</div>
                 <div className="flex items-center gap-3 min-w-0">
-                  <AgentAvatar name={a.name} color={a.color} size={32} />
+                  <AgentAvatar name={a.name} color={a.color} imageUrl={a.imageUrl} size={32} />
                   <div className="min-w-0">
                     <div className="font-medium truncate">{a.name}</div>
                     <div className="mt-1">

@@ -293,7 +293,12 @@ function Delegate() {
                       ))}
                     </select>
                     <div className="mt-5 sentra-card !shadow-none p-4 flex items-center gap-3">
-                      <AgentAvatar name={selected.name} color={selected.color} size={36} />
+                      <AgentAvatar
+                        name={selected.name}
+                        color={selected.color}
+                        imageUrl={selected.imageUrl}
+                        size={36}
+                      />
                       <div>
                         <div className="font-mono">{selected.name}</div>
                         <div className="mt-1">
@@ -421,7 +426,15 @@ function Delegate() {
                   {b.ids.map((id) => {
                     const a = agents.find((x) => x.id === id);
                     if (!a) return null;
-                    return <AgentAvatar key={id} name={a.name} color={a.color} size={26} />;
+                    return (
+                      <AgentAvatar
+                        key={id}
+                        name={a.name}
+                        color={a.color}
+                        imageUrl={a.imageUrl}
+                        size={26}
+                      />
+                    );
                   })}
                 </div>
                 <button

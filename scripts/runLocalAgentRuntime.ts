@@ -16,8 +16,9 @@ import { sentraCallAccessAbi, sentraProtocolContracts } from "../src/contracts/s
 import { arcTestnet } from "../src/lib/wagmi";
 import type { Agent, EarningsCall, SentraDataset, VaultTransaction } from "../src/lib/sentraData";
 import type { AgentStrategy } from "../src/lib/agentTypes";
+import { SENTRA_PAID_CALL_PRICE_USDC } from "../src/lib/sentraConstants";
 
-type RuntimeState = SentraDataset & {
+type RuntimeState = Omit<SentraDataset, "scheduledMarkets"> & {
   source: "sentra-vps-agent-runtime";
   generatedAt: string;
   arcBlockNumber: number | null;
@@ -25,6 +26,7 @@ type RuntimeState = SentraDataset & {
   pricing: Record<string, "priced" | "needs_owner_key" | "failed">;
   managedAgents: Record<string, ManagedAgentRecord>;
   walletDelegations: Record<string, RuntimeDelegationRecord>;
+  scheduledMarkets: Record<string, RuntimeScheduledMarketRecord>;
 };
 
 type ManagedAgentRecord = {
@@ -43,6 +45,7 @@ type ManagedAgentRecord = {
   delegationCapUsdc: number;
   riskLimits: Agent["riskLimits"];
   autoCalls: boolean;
+  imageUrl?: string | null;
   treasuryAddress: Address;
   circleWalletId: string;
   status: "draft" | "active";
@@ -62,6 +65,21 @@ type RuntimeDelegationRecord = {
   amountUsdc: number;
   txHash: `0x${string}` | null;
   status: "pending" | "active" | "withdrawn";
+  createdAt: string;
+  updatedAt: string;
+};
+
+type RuntimeScheduledMarketRecord = {
+  id: string;
+  agentId: string;
+  ownerAddress: Address;
+  marketId: string;
+  marketQuestion: string;
+  scheduledFor: string;
+  action: "submit_prediction";
+  probabilityBps: number;
+  confidenceBps: number;
+  status: "scheduled" | "due" | "completed" | "cancelled";
   createdAt: string;
   updatedAt: string;
 };
@@ -335,7 +353,7 @@ function buildCall(agent: (typeof strategies)[number], agentIndex: number): Earn
       "Largest cost is opportunity cost from refusing unverified high-conviction deployment before reputation evidence exists.",
     tomorrowThesis:
       "Publish only if the signal keeps a measurable probability edge, liquidity remains supportive, and the invalidation point is explicit.",
-    subscriptionCost: 0.01,
+    subscriptionCost: SENTRA_PAID_CALL_PRICE_USDC,
     title: `${agent.name} daily earnings call`,
     summary: preview(fullTranscript),
     audioUrl: null,
@@ -426,7 +444,7 @@ function buildManagedCall(agent: ManagedAgentRecord, agentIndex: number): Earnin
     biggestLoss:
       "Largest current cost is refusing weak signals that do not meet the publication standard.",
     tomorrowThesis: `${briefing.signal} ${briefing.invalidation}`,
-    subscriptionCost: 0.01,
+    subscriptionCost: SENTRA_PAID_CALL_PRICE_USDC,
     title: `${agent.name} runtime earnings call`,
     summary: preview(fullTranscript),
     audioUrl: null,
@@ -471,7 +489,7 @@ async function priceRuntimeCalls(calls: EarningsCall[]) {
 
   for (const call of calls) {
     try {
-      const expected = parseUnits("0.01", 6);
+      const expected = parseUnits(SENTRA_PAID_CALL_PRICE_USDC.toFixed(6), 6);
       const current = await publicClient.readContract({
         address: sentraProtocolContracts.callAccess as Address,
         abi: sentraCallAccessAbi,
@@ -527,6 +545,7 @@ function managedAgentToPublicAgent(
     name: agent.name,
     strategy: agent.strategy === "Custom" ? "Macro" : agent.strategy,
     description: agent.description,
+    imageUrl: agent.imageUrl ?? null,
     metadataUri: `${runtimePublicBaseUrl()}/metadata/${agent.slug}`,
     walletAddress: agent.treasuryAddress,
     circleWalletId: agent.circleWalletId,
@@ -564,6 +583,7 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
   const arcBlockNumber = await maybeArcBlockNumber();
   const managedAgents = existing?.managedAgents ?? {};
   const walletDelegations = existing?.walletDelegations ?? {};
+  const scheduledMarkets = existing?.scheduledMarkets ?? {};
   await hydrateManagedTreasuries(managedAgents);
   const managedAgentList = Object.values(managedAgents);
   const delegationList = Object.values(walletDelegations);
@@ -604,6 +624,7 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
           name: agent.name,
           strategy: agent.strategy,
           description: agent.description,
+          imageUrl: null,
           metadataUri: `${runtimePublicBaseUrl()}/metadata/${agent.id}`,
           walletAddress: address(`sentra-runtime-wallet:${agent.id}`),
           circleWalletId: "",
@@ -658,6 +679,7 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
       status: delegation.status,
       entryTxHash: delegation.txHash,
       exitTxHash: null,
+      walletAddress: delegation.walletAddress,
     }));
   const vaultTransactions: VaultTransaction[] = delegationList
     .filter((delegation) => delegation.txHash)
@@ -683,7 +705,7 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
     vaultTransactions,
     activityFeed: [
       `Runtime worker refreshed ${agents.length} agent research profiles at Arc block ${arcBlockNumber ?? "unavailable"}`,
-      "Paid call previews published with 0.01 USDC target pricing",
+      `Paid call previews published with ${SENTRA_PAID_CALL_PRICE_USDC.toFixed(1)} USDC target pricing`,
       managedAgentList.length
         ? `${managedAgentList.length} live agent profiles are stored by the VPS runtime`
         : "Delegation remains disabled until agents are registered on the SENTRA Arc registry",
@@ -692,6 +714,7 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
     pricing,
     managedAgents,
     walletDelegations,
+    scheduledMarkets,
   };
 }
 
@@ -709,8 +732,11 @@ async function writeState(state: RuntimeState) {
 }
 
 function publicState(state: RuntimeState) {
-  const { fullCalls, managedAgents, walletDelegations, ...rest } = state;
-  return rest;
+  const { fullCalls, managedAgents, walletDelegations, scheduledMarkets, ...rest } = state;
+  return {
+    ...rest,
+    scheduledMarkets: Object.values(scheduledMarkets),
+  };
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
@@ -846,6 +872,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       name,
       strategy,
       description: stringField(body.description).slice(0, 500),
+      imageUrl: stringField(body.imageUrl).slice(0, 4096) || previous?.imageUrl || null,
       registryAgentId,
       metadataHash,
       strategyHash,
@@ -978,6 +1005,50 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     state.walletDelegations[delegation.id] = delegation;
     await persistMutatedState(state);
     sendJson(res, 200, { status: "recorded", transactionId: `withdrawal:${delegation.id}` });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/schedules") {
+    if (!requireRuntimeSecret(req, res)) return;
+    const body = await readJsonBody(req);
+    const agentId = stringField(body.agentId);
+    const agent =
+      state.managedAgents[agentId] ??
+      Object.values(state.managedAgents).find(
+        (item) => uuid(`managed-agent-db:${item.slug}`) === agentId,
+      );
+    const ownerAddress = isAddress(body.ownerAddress) ? body.ownerAddress : null;
+    const scheduledFor = stringField(body.scheduledFor);
+    const scheduleTime = Date.parse(scheduledFor);
+    if (!agent || !ownerAddress || Number.isNaN(scheduleTime)) {
+      sendJson(res, 400, { error: "Invalid schedule payload" });
+      return;
+    }
+    if (agent.ownerAddress.toLowerCase() !== ownerAddress.toLowerCase()) {
+      sendJson(res, 403, { error: "Only the agent owner can schedule this agent" });
+      return;
+    }
+    const id = uuid(
+      `schedule:${agent.slug}:${stringField(body.marketId)}:${scheduledFor}:${nowIso()}`,
+    );
+    const timestamp = nowIso();
+    const record: RuntimeScheduledMarketRecord = {
+      id,
+      agentId: agent.slug,
+      ownerAddress,
+      marketId: stringField(body.marketId).slice(0, 128),
+      marketQuestion: stringField(body.marketQuestion).slice(0, 240),
+      scheduledFor: new Date(scheduleTime).toISOString(),
+      action: "submit_prediction",
+      probabilityBps: Math.max(0, Math.min(10_000, Math.round(numericField(body.probabilityBps)))),
+      confidenceBps: Math.max(0, Math.min(10_000, Math.round(numericField(body.confidenceBps)))),
+      status: "scheduled",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    state.scheduledMarkets[id] = record;
+    await persistMutatedState(state);
+    sendJson(res, 200, { status: "scheduled", scheduleId: id });
     return;
   }
 

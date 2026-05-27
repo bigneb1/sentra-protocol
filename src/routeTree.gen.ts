@@ -19,6 +19,7 @@ import { Route as ArenaRouteImport } from './routes/arena'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CallsIdRouteImport } from './routes/calls.$id'
+import { Route as ApiGenerateAgentImageRouteImport } from './routes/api.generate-agent-image'
 import { Route as ApiCircleWebhookRouteImport } from './routes/api.circle-webhook'
 import { Route as ApiAgentWorkerRouteImport } from './routes/api.agent-worker'
 import { Route as AgentIdRouteImport } from './routes/agent.$id'
@@ -80,6 +81,11 @@ const CallsIdRoute = CallsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => CallsRoute,
+} as any)
+const ApiGenerateAgentImageRoute = ApiGenerateAgentImageRouteImport.update({
+  id: '/api/generate-agent-image',
+  path: '/api/generate-agent-image',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCircleWebhookRoute = ApiCircleWebhookRouteImport.update({
   id: '/api/circle-webhook',
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
+  '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -174,6 +181,7 @@ export interface FileRoutesByTo {
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
+  '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -198,6 +206,7 @@ export interface FileRoutesById {
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
+  '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -223,6 +232,7 @@ export interface FileRouteTypes {
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
+    | '/api/generate-agent-image'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -246,6 +256,7 @@ export interface FileRouteTypes {
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
+    | '/api/generate-agent-image'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -269,6 +280,7 @@ export interface FileRouteTypes {
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
+    | '/api/generate-agent-image'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -293,6 +305,7 @@ export interface RootRouteChildren {
   AgentIdRoute: typeof AgentIdRoute
   ApiAgentWorkerRoute: typeof ApiAgentWorkerRoute
   ApiCircleWebhookRoute: typeof ApiCircleWebhookRoute
+  ApiGenerateAgentImageRoute: typeof ApiGenerateAgentImageRoute
   ApiAgentMetadataIdRoute: typeof ApiAgentMetadataIdRoute
   ApiRuntimeAgentsRoute: typeof ApiRuntimeAgentsRouteWithChildren
   ApiRuntimeDatasetRoute: typeof ApiRuntimeDatasetRoute
@@ -373,6 +386,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/calls/$id'
       preLoaderRoute: typeof CallsIdRouteImport
       parentRoute: typeof CallsRoute
+    }
+    '/api/generate-agent-image': {
+      id: '/api/generate-agent-image'
+      path: '/api/generate-agent-image'
+      fullPath: '/api/generate-agent-image'
+      preLoaderRoute: typeof ApiGenerateAgentImageRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/circle-webhook': {
       id: '/api/circle-webhook'
@@ -488,6 +508,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgentIdRoute: AgentIdRoute,
   ApiAgentWorkerRoute: ApiAgentWorkerRoute,
   ApiCircleWebhookRoute: ApiCircleWebhookRoute,
+  ApiGenerateAgentImageRoute: ApiGenerateAgentImageRoute,
   ApiAgentMetadataIdRoute: ApiAgentMetadataIdRoute,
   ApiRuntimeAgentsRoute: ApiRuntimeAgentsRouteWithChildren,
   ApiRuntimeDatasetRoute: ApiRuntimeDatasetRoute,

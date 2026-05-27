@@ -2,7 +2,7 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { parseUnits, type Address } from "viem";
 import { usePublicClient, useWriteContract } from "wagmi";
-import { Copy, Check, ArrowRight, Lock } from "lucide-react";
+import { Copy, Check, ArrowRight, Lock, CalendarClock } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -20,7 +20,7 @@ import {
   loadSentraDataset,
   type SentraDataset,
 } from "@/lib/sentraData";
-import { createDelegationIntentAction } from "@/lib/sentraActions";
+import { createDelegationIntentAction, scheduleMarketAction } from "@/lib/sentraActions";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
 import { ReputationRing } from "@/components/sentra/ReputationRing";
 import { AgentAvatar } from "@/components/sentra/Avatar";
@@ -34,6 +34,7 @@ import {
   sentraDelegationVaultAbi,
   sentraProtocolContracts,
 } from "@/contracts/sentraProtocol";
+import { paidCallPriceLabel } from "@/lib/sentraConstants";
 
 export const Route = createFileRoute("/agent/$id")({
   loader: async ({ params }) => {
@@ -65,6 +66,18 @@ function AgentPage() {
   const [followed, setFollowed] = useState(false);
   const [delegateAmt, setDelegateAmt] = useState(50);
   const [delegateBusy, setDelegateBusy] = useState<"approve" | "delegate" | null>(null);
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [marketId, setMarketId] = useState("arc-activity-7d");
+  const [marketQuestion, setMarketQuestion] = useState(
+    "Will Arc testnet transaction activity expand over the next seven days?",
+  );
+  const [scheduledFor, setScheduledFor] = useState(() => {
+    const date = new Date(Date.now() + 60 * 60 * 1000);
+    date.setMinutes(0, 0, 0);
+    return date.toISOString().slice(0, 16);
+  });
+  const [scheduledProbability, setScheduledProbability] = useState(62);
+  const [scheduledConfidence, setScheduledConfidence] = useState(70);
 
   useEffect(() => {
     const f = JSON.parse(localStorage.getItem("sentra_follows") || "[]");
@@ -171,13 +184,54 @@ function AgentPage() {
     }
   };
 
+  const scheduleMarket = async () => {
+    const authHeaders = walletSessionHeaders(wallet.address);
+    if (!wallet.connected) {
+      toast.push("Sign in with a wallet before scheduling this agent");
+      return;
+    }
+    if (!authHeaders) {
+      toast.push("Open Sign in and sign the wallet message before scheduling");
+      return;
+    }
+    if (!wallet.chainOk) {
+      wallet.switchToArc();
+      toast.push("Switch to Arc Testnet, then schedule the agent");
+      return;
+    }
+    try {
+      setScheduleBusy(true);
+      await scheduleMarketAction({
+        data: {
+          agentId: agent.databaseId,
+          marketId,
+          marketQuestion,
+          scheduledFor: new Date(scheduledFor).toISOString(),
+          probabilityBps: Math.round(scheduledProbability * 100),
+          confidenceBps: Math.round(scheduledConfidence * 100),
+        },
+        headers: authHeaders,
+      });
+      toast.push(`${agent.name} scheduled`);
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : "Schedule failed");
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+
   return (
     <div className="px-6 md:px-10 py-8 max-w-[1400px] mx-auto grid lg:grid-cols-[1.85fr_1fr] gap-6">
       {/* LEFT */}
       <div>
         <div className="sentra-card p-6">
           <div className="flex flex-col md:flex-row gap-5 items-start">
-            <AgentAvatar name={agent.name} color={agent.color} size={84} />
+            <AgentAvatar
+              name={agent.name}
+              color={agent.color}
+              imageUrl={agent.imageUrl}
+              size={84}
+            />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="font-mono text-2xl md:text-3xl">{agent.name}</h1>
@@ -406,7 +460,7 @@ function AgentPage() {
                     "Free preview"
                   ) : (
                     <>
-                      <Lock size={11} /> 0.01 USDC
+                      <Lock size={11} /> {paidCallPriceLabel()}
                     </>
                   )}
                 </div>
@@ -513,6 +567,67 @@ function AgentPage() {
           )}
         </div>
 
+        <div className="sentra-card p-5">
+          <h3 className="font-mono text-sm mb-3 text-muted-foreground tracking-widest flex items-center gap-2">
+            <CalendarClock size={14} className="text-primary-light" /> SCHEDULE PREDICTION
+          </h3>
+          <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">
+            Queue a future prediction job for this agent. The runtime stores the schedule now; the
+            signed prediction still has to be submitted to the prediction registry when the job is
+            due.
+          </p>
+          <div className="space-y-3">
+            <input
+              value={marketId}
+              onChange={(event) => setMarketId(event.target.value)}
+              className="w-full bg-elevated px-3 py-2 rounded text-xs font-mono outline-none focus:ring-1 focus:ring-primary"
+            />
+            <textarea
+              value={marketQuestion}
+              onChange={(event) => setMarketQuestion(event.target.value)}
+              rows={3}
+              className="w-full bg-elevated px-3 py-2 rounded text-xs outline-none focus:ring-1 focus:ring-primary resize-none"
+            />
+            <input
+              type="datetime-local"
+              value={scheduledFor}
+              onChange={(event) => setScheduledFor(event.target.value)}
+              className="w-full bg-elevated px-3 py-2 rounded text-xs font-mono outline-none focus:ring-1 focus:ring-primary"
+            />
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <label>
+                <span className="text-muted-foreground">Probability</span>
+                <input
+                  type="number"
+                  value={scheduledProbability}
+                  min={0}
+                  max={100}
+                  onChange={(event) => setScheduledProbability(Number(event.target.value))}
+                  className="mt-1 w-full bg-elevated px-2 py-1.5 rounded font-mono outline-none focus:ring-1 focus:ring-primary"
+                />
+              </label>
+              <label>
+                <span className="text-muted-foreground">Confidence</span>
+                <input
+                  type="number"
+                  value={scheduledConfidence}
+                  min={0}
+                  max={100}
+                  onChange={(event) => setScheduledConfidence(Number(event.target.value))}
+                  className="mt-1 w-full bg-elevated px-2 py-1.5 rounded font-mono outline-none focus:ring-1 focus:ring-primary"
+                />
+              </label>
+            </div>
+            <button
+              onClick={scheduleMarket}
+              disabled={scheduleBusy}
+              className="w-full px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-[#6D28D9] disabled:opacity-50 text-xs font-medium"
+            >
+              {scheduleBusy ? "Scheduling..." : "Queue Prediction"}
+            </button>
+          </div>
+        </div>
+
         <div>
           <h3 className="font-mono text-sm mb-3 text-muted-foreground tracking-widest">
             AGENTS YOU MAY LIKE
@@ -525,7 +640,7 @@ function AgentPage() {
                 params={{ id: a.id }}
                 className="sentra-card p-3 flex items-center gap-3 hover:border-primary transition"
               >
-                <AgentAvatar name={a.name} color={a.color} size={36} />
+                <AgentAvatar name={a.name} color={a.color} imageUrl={a.imageUrl} size={36} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm">{a.name}</div>
                   <div className="text-[10px] text-muted-foreground">

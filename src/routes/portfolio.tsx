@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Wallet, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, XAxis, Tooltip } from "recharts";
+import { parseUnits, type Address } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
 import { loadSentraDataset, type SentraDataset } from "@/lib/sentraData";
 import { createWithdrawalIntentAction } from "@/lib/sentraActions";
 import { useWallet } from "@/lib/wallet";
@@ -10,6 +12,7 @@ import { walletSessionHeaders } from "@/lib/walletSession";
 import { AgentAvatar } from "@/components/sentra/Avatar";
 import { BrierBadge } from "@/components/sentra/BrierBadge";
 import { StrategyChip } from "@/components/sentra/StrategyChip";
+import { sentraDelegationVaultAbi, sentraProtocolContracts } from "@/contracts/sentraProtocol";
 
 export const Route = createFileRoute("/portfolio")({
   head: () => ({ meta: [{ title: "My Portfolio — SENTRA" }] }),
@@ -32,7 +35,10 @@ function Portfolio() {
   } = Route.useLoaderData() as SentraDataset;
   const wallet = useWallet();
   const toast = useToast();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
   const [followed, setFollowed] = useState<string[]>([]);
+  const [busyWithdrawal, setBusyWithdrawal] = useState<string | null>(null);
   useEffect(() => {
     setFollowed(JSON.parse(localStorage.getItem("sentra_follows") || "[]"));
   }, []);
@@ -56,8 +62,15 @@ function Portfolio() {
     );
   }
 
-  const total = allocs.reduce((s, a) => s + a.current, 0);
-  const cost = allocs.reduce((s, a) => s + a.amount, 0);
+  const walletAllocations = allocs.filter(
+    (allocation) =>
+      !allocation.walletAddress ||
+      !wallet.address ||
+      allocation.walletAddress.toLowerCase() === wallet.address.toLowerCase(),
+  );
+  const walletTxs = txs;
+  const total = walletAllocations.reduce((s, a) => s + a.current, 0);
+  const cost = walletAllocations.reduce((s, a) => s + a.amount, 0);
   const delta = total - cost;
   const followedAgents = agents.filter((a) => followed.includes(a.id));
   const series = portfolioSeries(total);
@@ -67,15 +80,47 @@ function Portfolio() {
       toast.push("Open Sign in and sign the wallet message before withdrawing");
       return;
     }
+    const delegation = walletAllocations.find((item) => item.id === delegationId);
+    const agent = delegation ? agents.find((item) => item.id === delegation.agentId) : null;
+    if (!delegation || !agent?.registryAgentId) {
+      toast.push("This delegation is missing its on-chain agent id");
+      return;
+    }
+    if (!wallet.chainOk) {
+      wallet.switchToArc();
+      toast.push("Switch to Arc Testnet, then withdraw");
+      return;
+    }
+    if (!sentraProtocolContracts.delegationVault) {
+      toast.push("Delegation vault address is not configured");
+      return;
+    }
     try {
+      setBusyWithdrawal(delegationId);
+      const withdrawHash = await writeContractAsync({
+        address: sentraProtocolContracts.delegationVault as Address,
+        abi: sentraDelegationVaultAbi,
+        functionName: "withdraw",
+        args: [agent.registryAgentId, parseUnits(amountUsdc.toFixed(6), 6)],
+      });
+      toast.push("Withdrawal transaction submitted");
+      await publicClient?.waitForTransactionReceipt({ hash: withdrawHash });
+
       await createWithdrawalIntentAction({
-        data: { delegationId, amountUsdc },
+        data: {
+          delegationId,
+          amountUsdc,
+          txHash: withdrawHash,
+          withdrawerAddress: wallet.address ?? undefined,
+        },
         headers: authHeaders,
       });
-      toast.push(`Withdrawal intent queued for ${agentName}`);
+      toast.push(`Withdrew ${amountUsdc} USDC from ${agentName}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Withdrawal intent failed";
       toast.push(message);
+    } finally {
+      setBusyWithdrawal(null);
     }
   };
 
@@ -83,7 +128,16 @@ function Portfolio() {
     <div className="px-6 md:px-10 py-8 max-w-[1300px] mx-auto space-y-6">
       <h1 className="font-mono text-3xl">My Portfolio</h1>
 
-      <div className="grid lg:grid-cols-[1fr_1.6fr] gap-6">
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="sentra-card bracket p-6">
+          <div className="text-xs text-muted-foreground">Wallet USDC</div>
+          <div className="font-mono text-4xl mt-1">
+            {wallet.balanceLoading ? "..." : `$${wallet.balance.toFixed(2)}`}
+          </div>
+          <div className="text-xs text-muted-foreground mt-2">
+            {wallet.balanceError ? "Arc USDC read failed" : "Read live from Arc USDC"}
+          </div>
+        </div>
         <div className="sentra-card bracket p-6">
           <div className="text-xs text-muted-foreground">Total value</div>
           <div className="font-mono text-4xl mt-1">${total.toFixed(2)}</div>
@@ -135,7 +189,7 @@ function Portfolio() {
           <div>Brier</div>
           <div></div>
         </div>
-        {allocs.map((al) => {
+        {walletAllocations.map((al) => {
           const a = agents.find((x) => x.id === al.agentId);
           if (!a) return null;
           const pnl = ((al.current - al.amount) / al.amount) * 100;
@@ -149,7 +203,7 @@ function Portfolio() {
                 params={{ id: a.id }}
                 className="flex items-center gap-3 min-w-0"
               >
-                <AgentAvatar name={a.name} color={a.color} size={32} />
+                <AgentAvatar name={a.name} color={a.color} imageUrl={a.imageUrl} size={32} />
                 <div className="min-w-0">
                   <div className="truncate">{a.name}</div>
                   <StrategyChip strategy={a.strategy} size="xs" />
@@ -167,14 +221,15 @@ function Portfolio() {
               </div>
               <button
                 onClick={() => requestWithdrawal(al.id, a.name, al.current)}
+                disabled={busyWithdrawal === al.id}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
-                Withdraw
+                {busyWithdrawal === al.id ? "Withdrawing..." : "Withdraw"}
               </button>
             </div>
           );
         })}
-        {allocs.length === 0 && (
+        {walletAllocations.length === 0 && (
           <div className="p-8 text-center text-sm text-muted-foreground">
             No delegations yet. Allocate USDC to an agent to build your portfolio.
           </div>
@@ -192,7 +247,7 @@ function Portfolio() {
               key={a.id}
               className="flex items-center gap-3 py-2 border-b border-border last:border-0"
             >
-              <AgentAvatar name={a.name} color={a.color} size={28} />
+              <AgentAvatar name={a.name} color={a.color} imageUrl={a.imageUrl} size={28} />
               <div className="flex-1">
                 <div className="text-sm">{a.name}</div>
                 <div className="text-[11px] text-muted-foreground">
@@ -218,7 +273,7 @@ function Portfolio() {
         <div className="px-5 py-3 border-b border-border font-mono text-sm">
           Recent transactions
         </div>
-        {txs.map((t, i) => (
+        {walletTxs.map((t, i) => (
           <div
             key={i}
             className="flex items-center gap-3 px-5 py-2.5 border-b border-border last:border-0 text-sm"
@@ -235,7 +290,7 @@ function Portfolio() {
             <span className="text-xs text-muted-foreground">{t.date}</span>
           </div>
         ))}
-        {txs.length === 0 && (
+        {walletTxs.length === 0 && (
           <div className="p-8 text-center text-sm text-muted-foreground">
             No vault transactions yet.
           </div>
@@ -257,7 +312,7 @@ function Portfolio() {
                 className="sentra-card p-4 hover:border-primary transition"
               >
                 <div className="flex items-center gap-3">
-                  <AgentAvatar name={a.name} color={a.color} size={36} />
+                  <AgentAvatar name={a.name} color={a.color} imageUrl={a.imageUrl} size={36} />
                   <div>
                     <div className="font-mono text-sm">{a.name}</div>
                     <StrategyChip strategy={a.strategy} size="xs" />

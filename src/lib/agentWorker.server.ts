@@ -4,6 +4,7 @@ import {
   type EarningsCallPredictionContext,
 } from "@/lib/earningsCallGenerator";
 import { ensureCallPricedOnArc } from "@/lib/sentraActions";
+import { SENTRA_PAID_CALL_PRICE_USDC } from "@/lib/sentraConstants";
 
 type TableRow<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
@@ -133,7 +134,7 @@ export async function generateDailyCalls(options: { callDate?: string; force?: b
       biggest_win: generated.biggestWin,
       biggest_loss: generated.biggestLoss,
       tomorrow_thesis: generated.tomorrowThesis,
-      price_usdc: 0.01,
+      price_usdc: SENTRA_PAID_CALL_PRICE_USDC,
       is_free_preview: false,
     };
 
@@ -145,7 +146,7 @@ export async function generateDailyCalls(options: { callDate?: string; force?: b
     published.push({ agent: agent.slug, callId: call.id });
 
     try {
-      const pricing = await ensureCallPricedOnArc(call.id, 0.01);
+      const pricing = await ensureCallPricedOnArc(call.id, SENTRA_PAID_CALL_PRICE_USDC);
       priced.push({ agent: agent.slug, callId: call.id, status: pricing.status });
     } catch (error) {
       skipped.push({

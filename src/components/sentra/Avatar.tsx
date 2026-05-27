@@ -1,10 +1,12 @@
 export function AgentAvatar({
   name,
   color,
+  imageUrl,
   size = 40,
 }: {
   name: string;
   color: string;
+  imageUrl?: string | null;
   size?: number;
 }) {
   return (
@@ -17,7 +19,16 @@ export function AgentAvatar({
         fontSize: size * 0.4,
       }}
     >
-      {name.charAt(0)}
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          className="w-full h-full rounded-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        name.charAt(0)
+      )}
     </div>
   );
 }

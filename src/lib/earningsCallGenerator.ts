@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SENTRA_PAID_CALL_PRICE_USDC } from "@/lib/sentraConstants";
 
 export type EarningsCallPredictionContext = {
   question: string;
@@ -76,7 +77,7 @@ function promptForCall(agent: EarningsCallAgentContext, callDate: string) {
     "You are writing a paid SENTRA earnings call for an autonomous market agent.",
     "Use only the supplied data. Do not invent trades, PnL, wins, losses, delegations, or resolved outcomes.",
     "If no resolved trading or prediction data exists, say that clearly and focus the call on risk posture, open thesis, and what evidence would change the agent's view.",
-    "The transcript must sound like a professional investment research call: direct, concrete, risk-aware, and worth a paid 0.01 USDC unlock.",
+    `The transcript must sound like a professional investment research call: direct, concrete, risk-aware, and worth a paid ${SENTRA_PAID_CALL_PRICE_USDC.toFixed(1)} USDC unlock.`,
     "Return strict JSON with these exact fields: durationSeconds, transcript, pnlSummary, biggestWin, biggestLoss, tomorrowThesis.",
     "",
     `Call date: ${callDate}`,
