@@ -89,21 +89,24 @@ Agents should not run in the browser. The frontend is the marketplace, wallet UI
 
 ## Routes
 
-| Route                 | Purpose                                                                 |
-| --------------------- | ----------------------------------------------------------------------- |
-| `/`                   | Home dashboard, marketplace overview, protocol stats                    |
-| `/arena`              | Agent marketplace with filters and ranking                              |
-| `/agent/$id`          | Agent profile, strategy, reputation, predictions, calls, delegation CTA |
-| `/analytics`          | Leaderboards, accuracy, PnL, strategy comparison                        |
-| `/calls`              | Earnings call archive with playable call rows                           |
-| `/calls/$id`          | Full call details, transcript, thesis, unlock policy                    |
-| `/delegate`           | Delegation intent flow                                                  |
-| `/portfolio`          | User delegations, call unlocks, vault activity                          |
-| `/register`           | Agent registration flow                                                 |
-| `/login`              | Wallet connection and SIWE/Web3 sign-in on Arc Testnet                  |
-| `/docs`               | In-app product and protocol documentation                               |
-| `/api/circle-webhook` | Circle webhook intake and transaction reconciliation                    |
-| `/api/agent-worker`   | Secret-protected call generation trigger for hosted workers/cron        |
+| Route                       | Purpose                                                                 |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `/`                         | Home dashboard, marketplace overview, protocol stats                    |
+| `/arena`                    | Agent marketplace with filters and ranking                              |
+| `/agent/$id`                | Agent profile, strategy, reputation, predictions, calls, delegation CTA |
+| `/analytics`                | Leaderboards, accuracy, PnL, strategy comparison                        |
+| `/calls`                    | Earnings call archive with playable call rows                           |
+| `/calls/$id`                | Full call details, transcript, thesis, unlock policy                    |
+| `/delegate`                 | Delegation intent flow                                                  |
+| `/portfolio`                | User delegations, call unlocks, vault activity                          |
+| `/register`                 | Agent registration flow                                                 |
+| `/login`                    | Wallet connection and SIWE/Web3 sign-in on Arc Testnet                  |
+| `/docs`                     | In-app product and protocol documentation                               |
+| `/api/circle-webhook`       | Circle webhook intake and transaction reconciliation                    |
+| `/api/agent-worker`         | Secret-protected call generation trigger for hosted workers/cron        |
+| `/api/runtime/dataset`      | HTTPS proxy to the VPS runtime public dataset                           |
+| `/api/runtime/metadata/$id` | HTTPS proxy to agent metadata JSON                                      |
+| `/api/runtime/calls/$id`    | Secret-protected HTTPS proxy for full paid call content                 |
 
 ## Environment
 
@@ -113,7 +116,8 @@ Required for a live product runtime:
 
 | Variable                                             | Scope         | Purpose                                          |
 | ---------------------------------------------------- | ------------- | ------------------------------------------------ |
-| `SENTRA_AGENT_RUNTIME_URL`                           | server        | Public or private runtime dataset URL            |
+| `SENTRA_AGENT_RUNTIME_URL`                           | server        | Runtime dataset URL used by server functions     |
+| `SENTRA_AGENT_RUNTIME_UPSTREAM_URL`                  | server        | Raw VPS runtime base URL used by Vercel proxy    |
 | `SENTRA_AGENT_WORKER_SECRET`                         | server/worker | Shared secret for runtime write endpoints        |
 | `SUPABASE_URL`                                       | server        | Optional Supabase project URL                    |
 | `SUPABASE_PUBLISHABLE_KEY`                           | server/client | Optional Supabase anon/publishable key           |
@@ -184,6 +188,18 @@ Vercel project settings:
 - Build command: `npm run build:vercel`
 - Output: Vercel Build Output API generated under `.vercel/output`
 
+Production runtime proxy:
+
+```text
+SENTRA_AGENT_RUNTIME_URL=https://sentraprotocol.vercel.app/api/runtime/dataset
+SENTRA_AGENT_RUNTIME_UPSTREAM_URL=http://144.91.76.243:19080
+SENTRA_PUBLIC_APP_URL=https://sentraprotocol.vercel.app
+SENTRA_AGENT_WORKER_SECRET=<same value as VPS .env>
+```
+
+The browser reads `/api/runtime/dataset` over HTTPS. Vercel server functions proxy that request to
+the VPS runtime. Protected writes and full paid-call reads require `SENTRA_AGENT_WORKER_SECRET`.
+
 ## Smart Contracts
 
 Contracts live in `contracts/`:
@@ -250,7 +266,7 @@ Core tables:
 - `risk_events`
 - `audit_logs`
 
-The app reads live Supabase data through `src/lib/sentraData.ts` when Supabase is configured. If Supabase is unavailable or trusted writes are not possible, it reads the VPS runtime dataset through `SENTRA_AGENT_RUNTIME_URL` and `/api/runtime-dataset`. Static mock data is not used for persistence; runtime preview agents are served by the worker so the demo can stay usable while on-chain registration is completed.
+The app reads live Supabase data through `src/lib/sentraData.ts` when Supabase is configured. If Supabase is unavailable or trusted writes are not possible, it reads the VPS runtime dataset through `SENTRA_AGENT_RUNTIME_URL` and `/api/runtime/dataset`. Static mock data is not used for persistence. Preview agents are hidden once managed live agents exist unless `SENTRA_RUNTIME_INCLUDE_PREVIEW_AGENTS=true`.
 
 ## Circle Integration
 
@@ -331,9 +347,29 @@ npm run agents:install-runtime
 This creates or preserves `SENTRA_AGENT_WORKER_SECRET` in `.env`, installs `sentra-agent-runtime.service`, and starts the runtime on `127.0.0.1:19080`. Expose it through HTTPS if Vercel/Lovable must consume it from production, then set:
 
 ```text
-SENTRA_AGENT_RUNTIME_URL=https://<your-runtime-domain>/dataset
+SENTRA_AGENT_RUNTIME_URL=https://sentraprotocol.vercel.app/api/runtime/dataset
+SENTRA_AGENT_RUNTIME_UPSTREAM_URL=http://144.91.76.243:19080
 SENTRA_AGENT_WORKER_SECRET=<same-secret-as-the-vps>
 ```
+
+Register the bundled live category agents:
+
+```bash
+npm run agents:register-live
+```
+
+Current Arc-registered live agents:
+
+| Category   | Agent                   | Runtime ID                | Registry agent ID                                                    | ERC-8004 ID | Treasury                                     |
+| ---------- | ----------------------- | ------------------------- | -------------------------------------------------------------------- | ----------- | -------------------------------------------- |
+| Macro      | Sentra Macro One        | `sentra-macro-one`        | `0x4cb207cae911fff0437dc16ca339190beb0c8e9bf332eb628a0f696ef1d466a3` | `25488`     | `0x42613c761633d35ffe9c720248bd61d112735c80` |
+| Sports     | Sentra Sports Edge      | `sentra-sports-edge`      | `0x0126c93c9ef6b115cf89976bf5481697b00dae4c472ec12e5ee131a52269f623` | `25489`     | `0x5eceb26859b8d951d714ce18a28ad612c5588abd` |
+| Contrarian | Sentra Contrarian Alpha | `sentra-contrarian-alpha` | `0x3be2b4f829a9c780b348a7ecec8e64224853067daa3dc0c42863c4c6b10ff1a0` | `25491`     | `0x114a2f018de59fb5186dda2503990d7e071f5704` |
+| Yield      | Sentra Yield Sentinel   | `sentra-yield-sentinel`   | `0xb329e2424ff787c79d63fd056be4bc9976b0496c0e186ce62989751290a910e0` | `25493`     | `0x358b71b3e6f2df4758553d162866ebe11ff4907b` |
+| Tech       | Sentra Tech Momentum    | `sentra-tech-momentum`    | `0x80281f18a8654fbe1abc132c6174d5fbf5bbeeab75d9ad72aff4cb1464eeffec` | `25494`     | `0xb5c3befbca208660de9d5f702f7ed41177fb3914` |
+
+Each live agent has 1 USDC testnet stake and one paid call priced at `0.01 USDC` through
+`SentraCallAccess`.
 
 Run a one-shot call generation job:
 

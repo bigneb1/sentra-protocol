@@ -19,11 +19,17 @@ import { Route as ArenaRouteImport } from './routes/arena'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CallsIdRouteImport } from './routes/calls.$id'
-import { Route as ApiRuntimeDatasetRouteImport } from './routes/api.runtime-dataset'
 import { Route as ApiCircleWebhookRouteImport } from './routes/api.circle-webhook'
 import { Route as ApiAgentWorkerRouteImport } from './routes/api.agent-worker'
 import { Route as AgentIdRouteImport } from './routes/agent.$id'
+import { Route as ApiRuntimeWithdrawalsRouteImport } from './routes/api.runtime.withdrawals'
+import { Route as ApiRuntimeDelegationsRouteImport } from './routes/api.runtime.delegations'
+import { Route as ApiRuntimeDatasetRouteImport } from './routes/api.runtime.dataset'
+import { Route as ApiRuntimeAgentsRouteImport } from './routes/api.runtime.agents'
 import { Route as ApiAgentMetadataIdRouteImport } from './routes/api.agent-metadata.$id'
+import { Route as ApiRuntimeMetadataIdRouteImport } from './routes/api.runtime.metadata.$id'
+import { Route as ApiRuntimeCallsIdRouteImport } from './routes/api.runtime.calls.$id'
+import { Route as ApiRuntimeAgentsIdDeploymentRouteImport } from './routes/api.runtime.agents.$id.deployment'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -75,11 +81,6 @@ const CallsIdRoute = CallsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => CallsRoute,
 } as any)
-const ApiRuntimeDatasetRoute = ApiRuntimeDatasetRouteImport.update({
-  id: '/api/runtime-dataset',
-  path: '/api/runtime-dataset',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiCircleWebhookRoute = ApiCircleWebhookRouteImport.update({
   id: '/api/circle-webhook',
   path: '/api/circle-webhook',
@@ -95,11 +96,47 @@ const AgentIdRoute = AgentIdRouteImport.update({
   path: '/agent/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRuntimeWithdrawalsRoute = ApiRuntimeWithdrawalsRouteImport.update({
+  id: '/api/runtime/withdrawals',
+  path: '/api/runtime/withdrawals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeDelegationsRoute = ApiRuntimeDelegationsRouteImport.update({
+  id: '/api/runtime/delegations',
+  path: '/api/runtime/delegations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeDatasetRoute = ApiRuntimeDatasetRouteImport.update({
+  id: '/api/runtime/dataset',
+  path: '/api/runtime/dataset',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeAgentsRoute = ApiRuntimeAgentsRouteImport.update({
+  id: '/api/runtime/agents',
+  path: '/api/runtime/agents',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAgentMetadataIdRoute = ApiAgentMetadataIdRouteImport.update({
   id: '/api/agent-metadata/$id',
   path: '/api/agent-metadata/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRuntimeMetadataIdRoute = ApiRuntimeMetadataIdRouteImport.update({
+  id: '/api/runtime/metadata/$id',
+  path: '/api/runtime/metadata/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeCallsIdRoute = ApiRuntimeCallsIdRouteImport.update({
+  id: '/api/runtime/calls/$id',
+  path: '/api/runtime/calls/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeAgentsIdDeploymentRoute =
+  ApiRuntimeAgentsIdDeploymentRouteImport.update({
+    id: '/$id/deployment',
+    path: '/$id/deployment',
+    getParentRoute: () => ApiRuntimeAgentsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -114,9 +151,15 @@ export interface FileRoutesByFullPath {
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
-  '/api/runtime-dataset': typeof ApiRuntimeDatasetRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
+  '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
+  '/api/runtime/dataset': typeof ApiRuntimeDatasetRoute
+  '/api/runtime/delegations': typeof ApiRuntimeDelegationsRoute
+  '/api/runtime/withdrawals': typeof ApiRuntimeWithdrawalsRoute
+  '/api/runtime/calls/$id': typeof ApiRuntimeCallsIdRoute
+  '/api/runtime/metadata/$id': typeof ApiRuntimeMetadataIdRoute
+  '/api/runtime/agents/$id/deployment': typeof ApiRuntimeAgentsIdDeploymentRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -131,9 +174,15 @@ export interface FileRoutesByTo {
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
-  '/api/runtime-dataset': typeof ApiRuntimeDatasetRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
+  '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
+  '/api/runtime/dataset': typeof ApiRuntimeDatasetRoute
+  '/api/runtime/delegations': typeof ApiRuntimeDelegationsRoute
+  '/api/runtime/withdrawals': typeof ApiRuntimeWithdrawalsRoute
+  '/api/runtime/calls/$id': typeof ApiRuntimeCallsIdRoute
+  '/api/runtime/metadata/$id': typeof ApiRuntimeMetadataIdRoute
+  '/api/runtime/agents/$id/deployment': typeof ApiRuntimeAgentsIdDeploymentRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -149,9 +198,15 @@ export interface FileRoutesById {
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
-  '/api/runtime-dataset': typeof ApiRuntimeDatasetRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
+  '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
+  '/api/runtime/dataset': typeof ApiRuntimeDatasetRoute
+  '/api/runtime/delegations': typeof ApiRuntimeDelegationsRoute
+  '/api/runtime/withdrawals': typeof ApiRuntimeWithdrawalsRoute
+  '/api/runtime/calls/$id': typeof ApiRuntimeCallsIdRoute
+  '/api/runtime/metadata/$id': typeof ApiRuntimeMetadataIdRoute
+  '/api/runtime/agents/$id/deployment': typeof ApiRuntimeAgentsIdDeploymentRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -168,9 +223,15 @@ export interface FileRouteTypes {
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
-    | '/api/runtime-dataset'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
+    | '/api/runtime/agents'
+    | '/api/runtime/dataset'
+    | '/api/runtime/delegations'
+    | '/api/runtime/withdrawals'
+    | '/api/runtime/calls/$id'
+    | '/api/runtime/metadata/$id'
+    | '/api/runtime/agents/$id/deployment'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -185,9 +246,15 @@ export interface FileRouteTypes {
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
-    | '/api/runtime-dataset'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
+    | '/api/runtime/agents'
+    | '/api/runtime/dataset'
+    | '/api/runtime/delegations'
+    | '/api/runtime/withdrawals'
+    | '/api/runtime/calls/$id'
+    | '/api/runtime/metadata/$id'
+    | '/api/runtime/agents/$id/deployment'
   id:
     | '__root__'
     | '/'
@@ -202,9 +269,15 @@ export interface FileRouteTypes {
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
-    | '/api/runtime-dataset'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
+    | '/api/runtime/agents'
+    | '/api/runtime/dataset'
+    | '/api/runtime/delegations'
+    | '/api/runtime/withdrawals'
+    | '/api/runtime/calls/$id'
+    | '/api/runtime/metadata/$id'
+    | '/api/runtime/agents/$id/deployment'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -220,8 +293,13 @@ export interface RootRouteChildren {
   AgentIdRoute: typeof AgentIdRoute
   ApiAgentWorkerRoute: typeof ApiAgentWorkerRoute
   ApiCircleWebhookRoute: typeof ApiCircleWebhookRoute
-  ApiRuntimeDatasetRoute: typeof ApiRuntimeDatasetRoute
   ApiAgentMetadataIdRoute: typeof ApiAgentMetadataIdRoute
+  ApiRuntimeAgentsRoute: typeof ApiRuntimeAgentsRouteWithChildren
+  ApiRuntimeDatasetRoute: typeof ApiRuntimeDatasetRoute
+  ApiRuntimeDelegationsRoute: typeof ApiRuntimeDelegationsRoute
+  ApiRuntimeWithdrawalsRoute: typeof ApiRuntimeWithdrawalsRoute
+  ApiRuntimeCallsIdRoute: typeof ApiRuntimeCallsIdRoute
+  ApiRuntimeMetadataIdRoute: typeof ApiRuntimeMetadataIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -296,13 +374,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CallsIdRouteImport
       parentRoute: typeof CallsRoute
     }
-    '/api/runtime-dataset': {
-      id: '/api/runtime-dataset'
-      path: '/api/runtime-dataset'
-      fullPath: '/api/runtime-dataset'
-      preLoaderRoute: typeof ApiRuntimeDatasetRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/circle-webhook': {
       id: '/api/circle-webhook'
       path: '/api/circle-webhook'
@@ -324,12 +395,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/runtime/withdrawals': {
+      id: '/api/runtime/withdrawals'
+      path: '/api/runtime/withdrawals'
+      fullPath: '/api/runtime/withdrawals'
+      preLoaderRoute: typeof ApiRuntimeWithdrawalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/delegations': {
+      id: '/api/runtime/delegations'
+      path: '/api/runtime/delegations'
+      fullPath: '/api/runtime/delegations'
+      preLoaderRoute: typeof ApiRuntimeDelegationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/dataset': {
+      id: '/api/runtime/dataset'
+      path: '/api/runtime/dataset'
+      fullPath: '/api/runtime/dataset'
+      preLoaderRoute: typeof ApiRuntimeDatasetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/agents': {
+      id: '/api/runtime/agents'
+      path: '/api/runtime/agents'
+      fullPath: '/api/runtime/agents'
+      preLoaderRoute: typeof ApiRuntimeAgentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/agent-metadata/$id': {
       id: '/api/agent-metadata/$id'
       path: '/api/agent-metadata/$id'
       fullPath: '/api/agent-metadata/$id'
       preLoaderRoute: typeof ApiAgentMetadataIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/metadata/$id': {
+      id: '/api/runtime/metadata/$id'
+      path: '/api/runtime/metadata/$id'
+      fullPath: '/api/runtime/metadata/$id'
+      preLoaderRoute: typeof ApiRuntimeMetadataIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/calls/$id': {
+      id: '/api/runtime/calls/$id'
+      path: '/api/runtime/calls/$id'
+      fullPath: '/api/runtime/calls/$id'
+      preLoaderRoute: typeof ApiRuntimeCallsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime/agents/$id/deployment': {
+      id: '/api/runtime/agents/$id/deployment'
+      path: '/$id/deployment'
+      fullPath: '/api/runtime/agents/$id/deployment'
+      preLoaderRoute: typeof ApiRuntimeAgentsIdDeploymentRouteImport
+      parentRoute: typeof ApiRuntimeAgentsRoute
     }
   }
 }
@@ -344,6 +464,17 @@ const CallsRouteChildren: CallsRouteChildren = {
 
 const CallsRouteWithChildren = CallsRoute._addFileChildren(CallsRouteChildren)
 
+interface ApiRuntimeAgentsRouteChildren {
+  ApiRuntimeAgentsIdDeploymentRoute: typeof ApiRuntimeAgentsIdDeploymentRoute
+}
+
+const ApiRuntimeAgentsRouteChildren: ApiRuntimeAgentsRouteChildren = {
+  ApiRuntimeAgentsIdDeploymentRoute: ApiRuntimeAgentsIdDeploymentRoute,
+}
+
+const ApiRuntimeAgentsRouteWithChildren =
+  ApiRuntimeAgentsRoute._addFileChildren(ApiRuntimeAgentsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyticsRoute: AnalyticsRoute,
@@ -357,8 +488,13 @@ const rootRouteChildren: RootRouteChildren = {
   AgentIdRoute: AgentIdRoute,
   ApiAgentWorkerRoute: ApiAgentWorkerRoute,
   ApiCircleWebhookRoute: ApiCircleWebhookRoute,
-  ApiRuntimeDatasetRoute: ApiRuntimeDatasetRoute,
   ApiAgentMetadataIdRoute: ApiAgentMetadataIdRoute,
+  ApiRuntimeAgentsRoute: ApiRuntimeAgentsRouteWithChildren,
+  ApiRuntimeDatasetRoute: ApiRuntimeDatasetRoute,
+  ApiRuntimeDelegationsRoute: ApiRuntimeDelegationsRoute,
+  ApiRuntimeWithdrawalsRoute: ApiRuntimeWithdrawalsRoute,
+  ApiRuntimeCallsIdRoute: ApiRuntimeCallsIdRoute,
+  ApiRuntimeMetadataIdRoute: ApiRuntimeMetadataIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

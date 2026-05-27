@@ -25,17 +25,26 @@ fi
 touch "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 
+upsert_env() {
+  local key="$1"
+  local value="$2"
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    sed -i "s#^${key}=.*#${key}=${value}#" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >>"$ENV_FILE"
+  fi
+}
+
 if ! grep -q '^SENTRA_AGENT_WORKER_SECRET=' "$ENV_FILE"; then
   SECRET="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
   printf '\nSENTRA_AGENT_WORKER_SECRET=%s\n' "$SECRET" >>"$ENV_FILE"
 fi
 
-if ! grep -q '^SENTRA_AGENT_RUNTIME_URL=' "$ENV_FILE"; then
-  printf 'SENTRA_AGENT_RUNTIME_URL=http://127.0.0.1:%s/dataset\n' "$RUNTIME_PORT" >>"$ENV_FILE"
-fi
+upsert_env "SENTRA_AGENT_RUNTIME_URL" "http://127.0.0.1:${RUNTIME_PORT}/dataset"
 
-if [[ -n "$RUNTIME_PUBLIC_URL" ]] && ! grep -q '^SENTRA_AGENT_RUNTIME_PUBLIC_URL=' "$ENV_FILE"; then
-  printf 'SENTRA_AGENT_RUNTIME_PUBLIC_URL=%s\n' "${RUNTIME_PUBLIC_URL%/}" >>"$ENV_FILE"
+if [[ -n "$RUNTIME_PUBLIC_URL" ]]; then
+  upsert_env "SENTRA_AGENT_RUNTIME_PUBLIC_URL" "${RUNTIME_PUBLIC_URL%/}"
+  upsert_env "SENTRA_PUBLIC_RUNTIME_URL" "${RUNTIME_PUBLIC_URL%/}"
 fi
 
 mkdir -p "$(dirname "$STATE_PATH")"

@@ -345,14 +345,72 @@ function buildCall(agent: (typeof strategies)[number], agentIndex: number): Earn
   };
 }
 
+function managedStrategyBriefing(strategy: AgentStrategy) {
+  const briefings: Record<AgentStrategy, { setup: string; signal: string; invalidation: string }> =
+    {
+      Macro: {
+        setup:
+          "Macro focus is rate expectations, dollar-liquidity pressure, stablecoin settlement depth, and the next high-impact economic catalyst.",
+        signal:
+          "The agent requires a clean divergence between market-implied probability and realized liquidity conditions before publishing a directional call.",
+        invalidation:
+          "The thesis is invalidated if liquidity thins while volatility rises, or if the next macro print reprices rates faster than Arc settlement activity can confirm.",
+      },
+      Sports: {
+        setup:
+          "Sports focus is injury/news timing, market-open versus close movement, schedule fatigue, and whether public probability has overreacted to headline data.",
+        signal:
+          "The agent only publishes when its model probability clears the market by a measurable edge after adjusting for roster uncertainty and liquidity.",
+        invalidation:
+          "The thesis is invalidated by confirmed lineup changes, price movement that closes the edge, or news that arrives before the call can be acted on responsibly.",
+      },
+      Contrarian: {
+        setup:
+          "Contrarian focus is crowded consensus, reflexive positioning, liquidity traps, and asymmetric payoffs where downside is bounded by a clear invalidation level.",
+        signal:
+          "The agent looks for probability gaps where the market is pricing a narrative continuation even as underlying confirmation weakens.",
+        invalidation:
+          "The thesis is invalidated if the crowded trade gains fresh confirmation, volume expands in the direction of consensus, or the edge falls below the required buffer.",
+      },
+      Yield: {
+        setup:
+          "Yield focus is stablecoin basis, lending utilization, incentive quality, counterparty concentration, and the durability of quoted returns after fees.",
+        signal:
+          "The agent will prefer lower nominal yield if collateral quality, liquidity, and exit capacity produce a better risk-adjusted profile.",
+        invalidation:
+          "The thesis is invalidated if utilization spikes, incentive emissions weaken, withdrawal liquidity contracts, or counterparty exposure breaches limits.",
+      },
+      Tech: {
+        setup:
+          "Tech focus is AI infrastructure demand, semiconductor breadth, earnings revisions, capital-expenditure guidance, and risk appetite across growth assets.",
+        signal:
+          "The agent requires confirmation from both price structure and revisions data before treating momentum as durable rather than headline-driven.",
+        invalidation:
+          "The thesis is invalidated if revisions roll over, breadth narrows to a single crowded leader, or macro conditions compress growth multiples.",
+      },
+      Custom: {
+        setup:
+          "Custom focus is the user-defined strategy profile and whether its inputs are specific enough to support later reputation scoring.",
+        signal:
+          "The agent requires a complete probability, confidence, expiry, and invalidation structure before moving from observation to publication.",
+        invalidation:
+          "The thesis is invalidated if the configured inputs are too vague to verify or the edge cannot be measured against a market probability.",
+      },
+    };
+
+  return briefings[strategy];
+}
+
 function buildManagedCall(agent: ManagedAgentRecord, agentIndex: number): EarningsCall {
   const callId = uuid(`managed-call:${agent.slug}:${day()}`);
+  const briefing = managedStrategyBriefing(agent.strategy);
   const fullTranscript = [
-    `${agent.name} SENTRA call for ${day()}. This report is produced by the VPS runtime after the user-created agent has been saved and is waiting for live on-chain track-record depth.`,
-    `The agent strategy is ${agent.strategy}. The published configuration describes the thesis as: ${agent.description || "No additional description was supplied."}`,
-    `Current execution posture is conservative. Delegation is capped at ${agent.delegationCapUsdc.toFixed(2)} USDC, stake target is ${agent.stakeUsdc.toFixed(2)} USDC, max daily loss is ${agent.riskLimits.maxDailyLossUsdc.toFixed(2)} USDC, maximum open positions is ${agent.riskLimits.maxOpenPositions}, and max slippage is ${agent.riskLimits.maxSlippageBps} basis points.`,
-    `The call is designed to be paid research, not a performance claim. It identifies the exact assumptions to validate before capital is allocated: the agent must keep its ERC-8004 identity, SENTRA registry entry, and stake state live on Arc; prediction payloads must be signed; and reputation changes must be linked to resolved outcomes.`,
-    `Tomorrow's plan is to publish only probability-weighted decisions that include a market probability, an agent probability, confidence, expiry, and an invalidation condition. If those fields are missing, the runtime keeps the agent in observation mode.`,
+    `${agent.name} SENTRA call for ${day()}. This is a paid research briefing from the VPS runtime for a live Arc-registered agent. It is written as decision support: thesis, probability work, risk guardrails, invalidation, and the exact fields needed for later reputation scoring.`,
+    `Strategy: ${agent.strategy}. ${briefing.setup} The published agent description is: ${agent.description || "No additional description was supplied."}`,
+    `Current signal framework: ${briefing.signal} The runtime will not claim unverified PnL; it tracks the process until signed prediction commitments and resolved outcomes are available.`,
+    `Risk posture: delegation cap is ${agent.delegationCapUsdc.toFixed(2)} USDC, confirmed stake is ${agent.stakeUsdc.toFixed(2)} USDC, max daily loss is ${agent.riskLimits.maxDailyLossUsdc.toFixed(2)} USDC, maximum open positions is ${agent.riskLimits.maxOpenPositions}, and maximum slippage is ${agent.riskLimits.maxSlippageBps} basis points.`,
+    `Tomorrow's action plan: publish only if the call includes market probability, agent probability, confidence, expiry, and a written invalidation level. ${briefing.invalidation}`,
+    "Paid value: subscribers get the complete reasoning trail and can judge the agent by later Brier-score updates instead of marketing claims.",
   ].join("\n\n");
 
   return {
@@ -364,12 +422,10 @@ function buildManagedCall(agent: ManagedAgentRecord, agentIndex: number): Earnin
     transcript: fullTranscript,
     pnlSummary:
       "No realized PnL is claimed until this agent has confirmed strategy transactions and resolved predictions.",
-    biggestWin:
-      "Best current decision is requiring verifiable Arc state before accepting real delegation.",
+    biggestWin: "Best current decision is keeping every thesis measurable before accepting scale.",
     biggestLoss:
-      "Largest current cost is delayed deployment while the agent waits for confirmed registration, stake, and reputation history.",
-    tomorrowThesis:
-      "Move from observation to publication only when probability edge, liquidity, and invalidation criteria are explicit.",
+      "Largest current cost is refusing weak signals that do not meet the publication standard.",
+    tomorrowThesis: `${briefing.signal} ${briefing.invalidation}`,
     subscriptionCost: 0.01,
     title: `${agent.name} runtime earnings call`,
     summary: preview(fullTranscript),
@@ -511,14 +567,18 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
   await hydrateManagedTreasuries(managedAgents);
   const managedAgentList = Object.values(managedAgents);
   const delegationList = Object.values(walletDelegations);
-  const demoPredictions = strategies.flatMap((agent, index) => buildPredictions(agent.id, index));
+  const includePreviewAgents =
+    managedAgentList.length === 0 || process.env.SENTRA_RUNTIME_INCLUDE_PREVIEW_AGENTS === "true";
+  const demoPredictions = includePreviewAgents
+    ? strategies.flatMap((agent, index) => buildPredictions(agent.id, index))
+    : [];
   const managedPredictions = managedAgentList.flatMap((agent, index) =>
     buildPredictions(agent.slug, strategies.length + index, false),
   );
   const predictions = [...demoPredictions, ...managedPredictions];
   const fullCalls = Object.fromEntries(
     [
-      ...strategies.map((agent, index) => buildCall(agent, index)),
+      ...(includePreviewAgents ? strategies.map((agent, index) => buildCall(agent, index)) : []),
       ...managedAgentList
         .filter((agent) => agent.autoCalls)
         .map((agent, index) => buildManagedCall(agent, strategies.length + index)),
@@ -528,56 +588,60 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
   );
   const publicCalls = Object.values(fullCalls).map(publicCall);
 
-  const demoAgents = strategies.map((agent, index) => {
-    const agentPredictions = predictions.filter((prediction) => prediction.agentId === agent.id);
-    const resolved = agentPredictions.filter((prediction) => prediction.status === "resolved");
-    const correct = resolved.filter((prediction) => prediction.outcome === "correct").length;
-    const brier = resolved.length ? Number((1 - correct / resolved.length).toFixed(2)) : 0;
-    const pnlHistory = buildPnlSeries(index);
-    return {
-      id: agent.id,
-      databaseId: agent.databaseId,
-      registryAgentId: null,
-      name: agent.name,
-      strategy: agent.strategy,
-      description: agent.description,
-      metadataUri: `${runtimePublicBaseUrl()}/metadata/${agent.id}`,
-      walletAddress: address(`sentra-runtime-wallet:${agent.id}`),
-      circleWalletId: "",
-      predictionSigningKeyId: `runtime-${hash(agent.id).slice(0, 12)}`,
-      stakedAmount: 0,
-      reputation: resolved.length ? Math.round((correct / resolved.length) * 100) : 0,
-      brierScore: brier,
-      sharpeRatio: Number((0.72 + index * 0.11).toFixed(2)),
-      winRate: resolved.length ? correct / resolved.length : 0,
-      delegationCap: 0,
-      delegationFilled: 0,
-      gatewayBalance: 0,
-      pnl7d: Number(pnlHistory.slice(-7).at(-1)?.value.toFixed(2) ?? 0),
-      pnl30d: Number(pnlHistory.at(-1)?.value.toFixed(2) ?? 0),
-      totalPredictions: agentPredictions.length,
-      resolvedPredictions: resolved.length,
-      correctPredictions: correct,
-      createdAt: day(-2 - index),
-      followers: 0,
-      color: agent.color,
-      riskLimits: {
-        maxDailyLossUsdc: agent.risk.dailyLoss,
-        maxOpenPositions: agent.risk.open,
-        maxSlippageBps: agent.risk.slippage,
-        maxLeverage: 1,
-      },
-      validationCount: resolved.length,
-      validationHistory: [],
-      slashed: false,
-      earningsCallSubscription: {
-        enabled: true,
-        tier: "paid" as const,
-        monthlyUsd: 0,
-      },
-      pnlHistory,
-    };
-  });
+  const demoAgents = includePreviewAgents
+    ? strategies.map((agent, index) => {
+        const agentPredictions = predictions.filter(
+          (prediction) => prediction.agentId === agent.id,
+        );
+        const resolved = agentPredictions.filter((prediction) => prediction.status === "resolved");
+        const correct = resolved.filter((prediction) => prediction.outcome === "correct").length;
+        const brier = resolved.length ? Number((1 - correct / resolved.length).toFixed(2)) : 0;
+        const pnlHistory = buildPnlSeries(index);
+        return {
+          id: agent.id,
+          databaseId: agent.databaseId,
+          registryAgentId: null,
+          name: agent.name,
+          strategy: agent.strategy,
+          description: agent.description,
+          metadataUri: `${runtimePublicBaseUrl()}/metadata/${agent.id}`,
+          walletAddress: address(`sentra-runtime-wallet:${agent.id}`),
+          circleWalletId: "",
+          predictionSigningKeyId: `runtime-${hash(agent.id).slice(0, 12)}`,
+          stakedAmount: 0,
+          reputation: resolved.length ? Math.round((correct / resolved.length) * 100) : 0,
+          brierScore: brier,
+          sharpeRatio: Number((0.72 + index * 0.11).toFixed(2)),
+          winRate: resolved.length ? correct / resolved.length : 0,
+          delegationCap: 0,
+          delegationFilled: 0,
+          gatewayBalance: 0,
+          pnl7d: Number(pnlHistory.slice(-7).at(-1)?.value.toFixed(2) ?? 0),
+          pnl30d: Number(pnlHistory.at(-1)?.value.toFixed(2) ?? 0),
+          totalPredictions: agentPredictions.length,
+          resolvedPredictions: resolved.length,
+          correctPredictions: correct,
+          createdAt: day(-2 - index),
+          followers: 0,
+          color: agent.color,
+          riskLimits: {
+            maxDailyLossUsdc: agent.risk.dailyLoss,
+            maxOpenPositions: agent.risk.open,
+            maxSlippageBps: agent.risk.slippage,
+            maxLeverage: 1,
+          },
+          validationCount: resolved.length,
+          validationHistory: [],
+          slashed: false,
+          earningsCallSubscription: {
+            enabled: true,
+            tier: "paid" as const,
+            monthlyUsd: 0,
+          },
+          pnlHistory,
+        };
+      })
+    : [];
   const publicManagedAgents = managedAgentList.map((agent, index) =>
     managedAgentToPublicAgent(agent, strategies.length + index, delegationList),
   );
@@ -621,7 +685,7 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
       `Runtime worker refreshed ${agents.length} agent research profiles at Arc block ${arcBlockNumber ?? "unavailable"}`,
       "Paid call previews published with 0.01 USDC target pricing",
       managedAgentList.length
-        ? `${managedAgentList.length} wallet-created agent profiles are stored by the VPS runtime`
+        ? `${managedAgentList.length} live agent profiles are stored by the VPS runtime`
         : "Delegation remains disabled until agents are registered on the SENTRA Arc registry",
     ],
     fullCalls,
@@ -772,6 +836,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     }
 
     const previous = state.managedAgents[slug];
+    const registryChanged =
+      previous && previous.registryAgentId.toLowerCase() !== registryAgentId.toLowerCase();
     const timestamp = nowIso();
     const record: ManagedAgentRecord = {
       ownerId: stringField(body.ownerId, `wallet:${ownerAddress.toLowerCase()}`),
@@ -791,11 +857,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       autoCalls: body.autoCalls !== false,
       treasuryAddress: previous?.treasuryAddress ?? address(`sentra-managed-treasury:${slug}`),
       circleWalletId: previous?.circleWalletId ?? `runtime-wallet-${hash(slug).slice(0, 16)}`,
-      status: previous?.status ?? "draft",
-      arcErc8004Id: previous?.arcErc8004Id ?? null,
-      erc8004TxHash: previous?.erc8004TxHash ?? null,
-      registryTxHash: previous?.registryTxHash ?? null,
-      stakeTxHash: previous?.stakeTxHash ?? null,
+      status: registryChanged ? "draft" : (previous?.status ?? "draft"),
+      arcErc8004Id: registryChanged ? null : (previous?.arcErc8004Id ?? null),
+      erc8004TxHash: registryChanged ? null : (previous?.erc8004TxHash ?? null),
+      registryTxHash: registryChanged ? null : (previous?.registryTxHash ?? null),
+      stakeTxHash: registryChanged ? null : (previous?.stakeTxHash ?? null),
       createdAt: previous?.createdAt ?? timestamp,
       updatedAt: timestamp,
     };

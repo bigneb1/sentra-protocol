@@ -13,7 +13,7 @@ function defaultRuntimeUrl() {
       ? (process.env as Record<string, string | undefined>)
       : undefined;
   if (typeof window !== "undefined") {
-    return env?.VITE_SENTRA_RUNTIME_DATASET_URL ?? "/api/runtime-dataset";
+    return env?.VITE_SENTRA_RUNTIME_DATASET_URL ?? "/api/runtime/dataset";
   }
   return (
     nodeEnv?.SENTRA_AGENT_RUNTIME_URL ??

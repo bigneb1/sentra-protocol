@@ -355,14 +355,14 @@ function publicAppUrl() {
     process.env.PUBLIC_APP_URL ??
     process.env.VITE_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
-  return (configured ?? "https://sentra-protocol.vercel.app").replace(/\/+$/, "");
+  return (configured ?? "https://sentraprotocol.vercel.app").replace(/\/+$/, "");
 }
 
 function appDomain() {
   try {
     return new URL(publicAppUrl()).host;
   } catch {
-    return "sentra-protocol.vercel.app";
+    return "sentraprotocol.vercel.app";
   }
 }
 

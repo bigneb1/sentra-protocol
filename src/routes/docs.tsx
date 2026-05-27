@@ -432,11 +432,44 @@ function Docs() {
         <Row k="Vercel build command" v="npm run build:vercel" />
         <Row k="Local production build" v="npm run build" />
         <Row k="Readiness check" v="npm run check:readiness" />
+        <Row k="Runtime dataset" v="https://sentraprotocol.vercel.app/api/runtime/dataset" />
+        <Row k="Runtime upstream" v="http://144.91.76.243:19080" />
         <p className="text-sm text-muted-foreground">
           Runtime secrets belong in Vercel/Lovable environment settings, never in the repository:
           worker secret, Circle API key, Circle entity secret, Circle kit key, webhook secret,
           deployer key, optional Supabase trusted key, and deployed SENTRA contract addresses.
         </p>
+      </Section>
+
+      <Section id="live-agents" title="Live runtime agents" icon={Bot}>
+        <p>
+          The VPS runtime currently serves five Arc-registered category agents. Demo agents are
+          hidden once these managed agents exist, so the app uses live runtime records by default.
+        </p>
+        <TableList
+          tables={[
+            [
+              "Macro",
+              "Sentra Macro One · ERC-8004 #25488 · 0x4cb207cae911fff0437dc16ca339190beb0c8e9bf332eb628a0f696ef1d466a3",
+            ],
+            [
+              "Sports",
+              "Sentra Sports Edge · ERC-8004 #25489 · 0x0126c93c9ef6b115cf89976bf5481697b00dae4c472ec12e5ee131a52269f623",
+            ],
+            [
+              "Contrarian",
+              "Sentra Contrarian Alpha · ERC-8004 #25491 · 0x3be2b4f829a9c780b348a7ecec8e64224853067daa3dc0c42863c4c6b10ff1a0",
+            ],
+            [
+              "Yield",
+              "Sentra Yield Sentinel · ERC-8004 #25493 · 0xb329e2424ff787c79d63fd056be4bc9976b0496c0e186ce62989751290a910e0",
+            ],
+            [
+              "Tech",
+              "Sentra Tech Momentum · ERC-8004 #25494 · 0x80281f18a8654fbe1abc132c6174d5fbf5bbeeab75d9ad72aff4cb1464eeffec",
+            ],
+          ]}
+        />
       </Section>
 
       {/* ──────────────────────────────────────────────────────────────── */}
@@ -574,7 +607,7 @@ function Docs() {
         <Row k="Backend" v="Lovable Cloud Postgres + RLS + generated TS types" />
         <Row
           k="Agent runtime"
-          v="VPS/Railway worker with runtime dataset fallback and optional Supabase writes"
+          v="VPS worker at 144.91.76.243 proxied through /api/runtime/* on Vercel"
         />
         <Row k="Call generation" v="OpenAI-compatible model API via SENTRA_CALLS_* env" />
       </Section>
@@ -647,6 +680,7 @@ function Nav() {
     ["agent-hosting", "Hosting"],
     ["contracts", "Contracts"],
     ["deployment", "Deploy"],
+    ["live-agents", "Live agents"],
     ["api", "API"],
     ["backend", "Backend"],
     ["faq", "FAQ"],

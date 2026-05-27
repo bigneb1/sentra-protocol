@@ -20,6 +20,7 @@
     "agents:runtime": "node --import tsx/esm scripts/runLocalAgentRuntime.ts",
     "agents:install-service": "bash scripts/installAgentWorkerService.sh",
     "agents:install-runtime": "bash scripts/installAgentRuntimeService.sh",
+    "agents:register-live": "node --import tsx/esm scripts/registerLiveRuntimeAgents.ts",
     "check:readiness": "node --import tsx/esm scripts/checkReadiness.ts"
   },
   "dependencies": {
