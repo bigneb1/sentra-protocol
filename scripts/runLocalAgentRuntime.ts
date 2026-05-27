@@ -180,6 +180,87 @@ function isStrategy(value: unknown): value is AgentStrategy {
   );
 }
 
+function circleServerEnv() {
+  const apiKey = process.env.CIRCLE_API_KEY;
+  const entitySecret = process.env.ENTITY_SECRET ?? process.env.CIRCLE_ENTITY_SECRET;
+  if (!apiKey || !entitySecret) return null;
+  return { apiKey, entitySecret, baseUrl: process.env.CIRCLE_BASE_URL };
+}
+
+let runtimeWalletSetId: string | null = process.env.CIRCLE_AGENT_WALLET_SET_ID ?? null;
+
+async function getRuntimeWalletSetId() {
+  if (runtimeWalletSetId) return runtimeWalletSetId;
+
+  const env = circleServerEnv();
+  if (!env) return null;
+
+  try {
+    const { initiateDeveloperControlledWalletsClient } =
+      await import("@circle-fin/developer-controlled-wallets");
+    const circle = initiateDeveloperControlledWalletsClient(env);
+    const response = await circle.createWalletSet({
+      name: "SENTRA Runtime Agent Wallets",
+      idempotencyKey: "sentra-runtime-agent-wallet-set",
+    });
+    runtimeWalletSetId = response.data?.walletSet?.id ?? null;
+    return runtimeWalletSetId;
+  } catch (error) {
+    console.warn(
+      "[sentra-runtime] Circle wallet set unavailable; using runtime treasury fallback",
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
+}
+
+async function createCircleTreasuryWallet(slug: string, name: string) {
+  const env = circleServerEnv();
+  const walletSetId = await getRuntimeWalletSetId();
+  if (!env || !walletSetId) return null;
+
+  try {
+    const { AccountType, Blockchain, initiateDeveloperControlledWalletsClient } =
+      await import("@circle-fin/developer-controlled-wallets");
+    const circle = initiateDeveloperControlledWalletsClient(env);
+    const response = await circle.createWallets({
+      blockchains: [Blockchain.ArcTestnet],
+      count: 1,
+      walletSetId,
+      accountType: AccountType.Sca,
+      metadata: [{ name: `${name} treasury`, refId: `sentra-runtime-agent:${slug}` }],
+      idempotencyKey: `sentra-runtime-agent-wallet:${slug}`,
+    });
+    const wallet = response.data?.wallets?.[0];
+    if (!wallet?.id || !wallet.address || !isAddress(wallet.address)) return null;
+    return { circleWalletId: wallet.id, treasuryAddress: wallet.address as Address };
+  } catch (error) {
+    console.warn(
+      `[sentra-runtime] Circle wallet unavailable for ${slug}; using runtime treasury fallback`,
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
+}
+
+function isRuntimeWalletId(value: string | null | undefined) {
+  return !value || value.startsWith("runtime-wallet-");
+}
+
+async function hydrateManagedTreasuries(managedAgents: Record<string, ManagedAgentRecord>) {
+  for (const record of Object.values(managedAgents)) {
+    if (!isRuntimeWalletId(record.circleWalletId)) continue;
+
+    const wallet = await createCircleTreasuryWallet(record.slug, record.name);
+    if (!wallet) continue;
+
+    record.circleWalletId = wallet.circleWalletId;
+    record.treasuryAddress = wallet.treasuryAddress;
+    record.updatedAt = nowIso();
+    managedAgents[record.slug] = record;
+  }
+}
+
 function callAccessId(callId: string) {
   return `0x${callId.replace(/-/g, "").padEnd(64, "0")}` as `0x${string}`;
 }
@@ -427,6 +508,7 @@ async function buildState(existing?: RuntimeState | null): Promise<RuntimeState>
   const arcBlockNumber = await maybeArcBlockNumber();
   const managedAgents = existing?.managedAgents ?? {};
   const walletDelegations = existing?.walletDelegations ?? {};
+  await hydrateManagedTreasuries(managedAgents);
   const managedAgentList = Object.values(managedAgents);
   const delegationList = Object.values(walletDelegations);
   const demoPredictions = strategies.flatMap((agent, index) => buildPredictions(agent.id, index));
