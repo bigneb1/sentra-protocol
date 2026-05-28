@@ -11,6 +11,7 @@
     "predictionRegistry": "0x25f801c280c8503cd0522ec80ba227ebbdab39bb",
     "reputationOracle": "0x6c395664a45c2ac8ad58562595a97b753444fae8",
     "slashingModule": "0xd0e7ed978c3f14224dc9aa42ea7ceddae4b44dd3",
-    "callAccess": "0x7a4350c31d417cc7fb6c3613a8990f847c8dc06a"
+    "callAccess": "0x7a4350c31d417cc7fb6c3613a8990f847c8dc06a",
+    "marketFactory": "0x88c7922bf41246a2481e132dbbf6ae224861c2e3"
   }
 }

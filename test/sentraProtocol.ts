@@ -74,6 +74,58 @@ async function deployProtocol() {
   };
 }
 
+async function deployMarket() {
+  const { viem } = await network.create();
+  const publicClient = await viem.getPublicClient();
+  const testClient = await viem.getTestClient();
+  const [owner, yesTrader, noTrader] = await viem.getWalletClients();
+  const token = await viem.deployContract("MockUSDC");
+  const factory = await viem.deployContract("SentraPredictionMarketFactory", [
+    token.address,
+    owner.account.address,
+  ]);
+  const marketId = hash(`market-${crypto.randomUUID()}`);
+  const closesAt = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  await factory.write.createMarket([
+    marketId,
+    "Will SENTRA settle an Arc prediction market?",
+    "ipfs://sentra-market",
+    closesAt,
+  ]);
+  const marketAddress = await factory.read.marketById([marketId]);
+  const market = await viem.getContractAt("SentraPredictionMarket", marketAddress);
+  const marketAsYes = await viem.getContractAt("SentraPredictionMarket", marketAddress, {
+    client: { public: publicClient, wallet: yesTrader },
+  });
+  const marketAsNo = await viem.getContractAt("SentraPredictionMarket", marketAddress, {
+    client: { public: publicClient, wallet: noTrader },
+  });
+  const tokenAsYes = await viem.getContractAt("MockUSDC", token.address, {
+    client: { public: publicClient, wallet: yesTrader },
+  });
+  const tokenAsNo = await viem.getContractAt("MockUSDC", token.address, {
+    client: { public: publicClient, wallet: noTrader },
+  });
+  assert.notEqual(marketAddress, "0x0000000000000000000000000000000000000000");
+  return {
+    token,
+    factory,
+    market,
+    marketAsYes,
+    marketAsNo,
+    tokenAsYes,
+    tokenAsNo,
+    marketId,
+    marketAddress,
+    viem,
+    publicClient,
+    testClient,
+    owner,
+    yesTrader,
+    noTrader,
+  };
+}
+
 async function run(name: string, fn: () => Promise<void>) {
   try {
     await fn();
@@ -192,4 +244,36 @@ await run("unlocks paid calls once and records access", async () => {
 
   assert.equal(await callAccess.read.hasAccess([callId, delegator.account.address]), true);
   await assert.rejects(callsAsDelegator.write.unlock([callId]), /already unlocked/);
+});
+
+await run("creates and resolves pooled yes-no prediction markets", async () => {
+  const {
+    token,
+    market,
+    marketAsYes,
+    marketAsNo,
+    tokenAsYes,
+    tokenAsNo,
+    testClient,
+    yesTrader,
+    noTrader,
+  } = await deployMarket();
+
+  await token.write.mint([yesTrader.account.address, usdc("10")]);
+  await token.write.mint([noTrader.account.address, usdc("30")]);
+  await tokenAsYes.write.approve([market.address, usdc("10")]);
+  await tokenAsNo.write.approve([market.address, usdc("30")]);
+  await marketAsYes.write.buy([true, usdc("10")]);
+  await marketAsNo.write.buy([false, usdc("30")]);
+
+  assert.equal(await market.read.totalYesShares(), usdc("10"));
+  assert.equal(await market.read.totalNoShares(), usdc("30"));
+
+  await testClient.increaseTime({ seconds: 3601 });
+  await testClient.mine({ blocks: 1 });
+  await market.write.resolve([1]);
+  await marketAsYes.write.claim();
+
+  assert.equal(await token.read.balanceOf([yesTrader.account.address]), usdc("40"));
+  await assert.rejects(marketAsNo.write.claim(), /nothing to claim|no winning pool/);
 });

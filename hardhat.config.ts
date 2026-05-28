@@ -2,7 +2,8 @@ import hardhatViem from "@nomicfoundation/hardhat-viem";
 import { defineConfig } from "hardhat/config";
 
 const arcTestnetRpcUrl = process.env.ARC_TESTNET_RPC_URL ?? "https://rpc.testnet.arc.network";
-const arcTestnetDeployerPrivateKey = process.env.ARC_TESTNET_DEPLOYER_PRIVATE_KEY;
+const arcTestnetDeployerPrivateKey =
+  process.env.ARC_TESTNET_DEPLOYER_PRIVATE_KEY ?? process.env.SENTRA_PROTOCOL_OWNER_PRIVATE_KEY;
 
 export default defineConfig({
   plugins: [hardhatViem],

@@ -21,6 +21,7 @@
     "agents:install-service": "bash scripts/installAgentWorkerService.sh",
     "agents:install-runtime": "bash scripts/installAgentRuntimeService.sh",
     "agents:register-live": "node --import tsx/esm scripts/registerLiveRuntimeAgents.ts",
+    "deploy:market-factory": "hardhat run scripts/deployMarketFactory.ts --network arcTestnet",
     "check:readiness": "node --import tsx/esm scripts/checkReadiness.ts"
   },
   "dependencies": {

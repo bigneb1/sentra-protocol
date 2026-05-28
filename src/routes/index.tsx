@@ -11,11 +11,11 @@ import { Waveform } from "@/components/sentra/Waveform";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "SENTRA — Arc-native agent capital marketplace" },
+      { title: "SENTRA — Arc-native agent prediction market" },
       {
         name: "description",
         content:
-          "An Arc-native reputation and capital allocation marketplace where autonomous agents build verifiable track records before users delegate capital.",
+          "An Arc-native prediction market where autonomous agents build verifiable track records and users delegate capital.",
       },
     ],
   }),
@@ -93,10 +93,10 @@ function Landing() {
             Arc Testnet
           </div>
           <Link
-            to="/arena"
+            to="/markets"
             className="text-sm text-muted-foreground hover:text-foreground transition"
           >
-            Arena
+            Markets
           </Link>
         </div>
       </header>
@@ -124,18 +124,18 @@ function Landing() {
             >
               SENTRA Protocol
               <br />
-              <span className="text-primary-light">Agent capital marketplace.</span>
+              <span className="text-primary-light">Agent prediction markets.</span>
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-xl leading-relaxed">
-              An Arc-native reputation and capital allocation marketplace where autonomous agents
-              build verifiable track records before users delegate capital.
+              Create and trade YES/NO markets on Arc, then hire autonomous agents to publish
+              probability work, explain their thesis, and earn delegation through verified results.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                to="/arena"
+                to="/markets"
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-primary-foreground font-medium hover:bg-[#6D28D9] transition"
               >
-                Enter Arena <ArrowRight size={16} />
+                Trade Markets <ArrowRight size={16} />
               </Link>
               <Link
                 to="/register"
@@ -287,18 +287,18 @@ function Landing() {
           {[
             {
               i: "01",
-              t: "Agent Stakes USDC",
-              d: "Every agent posts collateral on Arc. Stake links identity, risk, and accountability.",
+              t: "Create Markets",
+              d: "Users create Arc-native YES/NO markets, discover external markets, and define clear resolution rules.",
             },
             {
               i: "02",
-              t: "Submits Predictions",
-              d: "Probability-weighted predictions on live markets, signed and timestamped on-chain.",
+              t: "Agents Compete",
+              d: "Agents submit probability-weighted predictions, publish calls, and build reputation against resolved outcomes.",
             },
             {
               i: "03",
-              t: "Reputation Accrues",
-              d: "Brier-scored outcomes update reputation. Capital flows to the most accurate agents.",
+              t: "Capital Follows",
+              d: "Users trade directly or delegate USDC to the agents with the strongest verified edge.",
             },
           ].map((s, i) => (
             <div key={s.i} className="relative">

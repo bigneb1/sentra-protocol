@@ -20,6 +20,7 @@ import {
   Rocket,
   FileText,
   HelpCircle,
+  CandlestickChart,
 } from "lucide-react";
 import {
   ARC_CIRCLE_BLOCKCHAIN,
@@ -51,9 +52,9 @@ function Docs() {
         <div className="text-xs tracking-widest text-primary-light mb-2">DOCUMENTATION</div>
         <h1 className="font-mono text-3xl md:text-4xl mb-3">SENTRA — Complete App Reference</h1>
         <p className="text-muted-foreground max-w-2xl leading-relaxed">
-          SENTRA is an Arc-native marketplace where autonomous agents build verifiable on-chain
-          reputation, and users delegate USDC capital to the agents they trust. This document is the
-          full reference for the running app: every page, every protocol primitive, every
+          SENTRA is an Arc-native prediction market where autonomous agents compete publicly, build
+          verifiable on-chain reputation, and earn USDC capital delegation from users. This document
+          is the full reference for the running app: every page, every protocol primitive, every
           integration, and every backend table.
         </p>
       </div>
@@ -67,11 +68,15 @@ function Docs() {
       <PartHeader n="Part 1" title="Overview" />
 
       <Section id="what" title="What SENTRA is" icon={Compass}>
-        <p>SENTRA is a three-sided marketplace:</p>
+        <p>SENTRA is a prediction-market marketplace with four participants:</p>
+        <Card title="Traders">
+          Users who create and trade Arc-native YES/NO markets with USDC. The market layer is where
+          questions, odds, close times, outcomes, and payouts live.
+        </Card>
         <Card title="Agents">
           Autonomous programs that publish probability-weighted predictions on financial, macro,
-          sports, or on-chain markets. Each agent stakes USDC on Arc and earns a verifiable
-          Brier-score-based reputation.
+          sports, or on-chain markets. Agents can be hired to analyze markets, publish probability
+          work, and eventually trade with delegated capital.
         </Card>
         <Card title="Delegators">
           USDC holders who allocate capital to agents they trust. Delegation flows through a
@@ -82,28 +87,36 @@ function Docs() {
           explain their thesis. Access is unlocked with USDC and recorded on-chain.
         </Card>
         <p className="text-sm text-muted-foreground">
-          The protocol itself never runs models. It scores them — using on-chain signed predictions,
-          market resolutions, and an EMA Brier-score reputation curve.
+          The protocol itself does not hide model performance. It records predictions, market
+          activity, and outcomes so agent quality can be scored with Brier-style reputation.
         </p>
       </Section>
 
       <Section id="how" title="How it works in 60 seconds" icon={Rocket}>
-        <Step n="01" t="An agent registers">
+        <Step n="01" t="A user creates or imports a market">
+          SENTRA indexes live external markets from Polymarket and Opinion, and supports Arc-native
+          YES/NO markets through `SentraPredictionMarketFactory`.
+        </Step>
+        <Step n="02" t="Traders buy YES or NO">
+          Users approve USDC and buy binary shares. Winning-side holders claim from the pooled
+          market after resolution.
+        </Step>
+        <Step n="03" t="An agent registers">
           Stakes USDC on Arc, commits a strategy hash and a public signing key.
         </Step>
-        <Step n="02" t="The agent posts predictions">
+        <Step n="04" t="The agent posts predictions">
           Each prediction is signed off-chain, hashed on-chain, with a probability, confidence, and
           resolution time.
         </Step>
-        <Step n="03" t="Markets resolve">
+        <Step n="05" t="Markets resolve">
           Outcomes are recorded by the reputation oracle. Brier scores are computed; reputation
           updates as a 90-day EMA.
         </Step>
-        <Step n="04" t="Users delegate">
+        <Step n="06" t="Users delegate">
           Delegators send USDC to the delegation vault for an agent, up to its cap. PnL accrues
           pro-rata.
         </Step>
-        <Step n="05" t="Agents publish earnings calls">
+        <Step n="07" t="Agents publish earnings calls">
           Subscribers unlock with USDC via the call-access contract.
         </Step>
       </Section>
@@ -118,6 +131,15 @@ function Docs() {
         <p>
           Hero, live activity feed, spotlight agents, protocol stats. Entry point for new users.
           Counters are seeded at zero until real agents register and predictions resolve.
+        </p>
+      </Section>
+
+      <Section id="page-markets" title="/markets  — Prediction markets" icon={CandlestickChart}>
+        <p>
+          Market creation, discovery, and trade entry. The page indexes live Polymarket markets
+          through the public Gamma API and optionally indexes Opinion markets with an
+          `OPINION_API_KEY`. Imported markets are discovery-only; SENTRA-native markets use Arc
+          USDC, the market factory contract, and wallet-confirmed YES/NO buys.
         </p>
       </Section>
 

@@ -2,11 +2,17 @@ import { network } from "hardhat";
 import { ARC_USDC_ADDRESS } from "../src/lib/arcTestnet";
 
 async function main() {
-  if (!process.env.ARC_TESTNET_DEPLOYER_PRIVATE_KEY) {
-    throw new Error("ARC_TESTNET_DEPLOYER_PRIVATE_KEY is required to deploy SENTRA contracts");
+  if (
+    !process.env.ARC_TESTNET_DEPLOYER_PRIVATE_KEY &&
+    !process.env.SENTRA_PROTOCOL_OWNER_PRIVATE_KEY
+  ) {
+    throw new Error(
+      "ARC_TESTNET_DEPLOYER_PRIVATE_KEY or SENTRA_PROTOCOL_OWNER_PRIVATE_KEY is required to deploy SENTRA contracts",
+    );
   }
 
   const { viem } = await network.create();
+  const [deployer] = await viem.getWalletClients();
 
   const agentRegistry = await viem.deployContract("SentraAgentRegistry", [ARC_USDC_ADDRESS]);
   const stakeVault = await viem.deployContract("SentraStakeVault", [
@@ -31,6 +37,10 @@ async function main() {
     ARC_USDC_ADDRESS,
     agentRegistry.address,
   ]);
+  const marketFactory = await viem.deployContract("SentraPredictionMarketFactory", [
+    ARC_USDC_ADDRESS,
+    deployer.account.address,
+  ]);
 
   await agentRegistry.write.setStakeVault([stakeVault.address]);
   await agentRegistry.write.setReputationOracle([reputationOracle.address]);
@@ -44,6 +54,7 @@ async function main() {
     reputationOracle: reputationOracle.address,
     slashingModule: slashingModule.address,
     callAccess: callAccess.address,
+    marketFactory: marketFactory.address,
   };
 
   console.log(JSON.stringify(deployment, null, 2));
@@ -55,6 +66,7 @@ async function main() {
   console.log(`VITE_SENTRA_REPUTATION_ORACLE_ADDRESS=${deployment.reputationOracle}`);
   console.log(`VITE_SENTRA_SLASHING_MODULE_ADDRESS=${deployment.slashingModule}`);
   console.log(`VITE_SENTRA_CALL_ACCESS_ADDRESS=${deployment.callAccess}`);
+  console.log(`VITE_SENTRA_MARKET_FACTORY_ADDRESS=${deployment.marketFactory}`);
 }
 
 main().catch((error) => {

@@ -277,3 +277,171 @@ export const sentraPredictionRegistryAbi = [
     ],
   },
 ] as const;
+
+export const sentraPredictionMarketFactoryAbi = [
+  {
+    type: "function",
+    name: "createMarket",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "marketId", type: "bytes32" },
+      { name: "question", type: "string" },
+      { name: "metadataUri", type: "string" },
+      { name: "closesAt", type: "uint64" },
+    ],
+    outputs: [{ name: "market", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "allMarkets",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "markets", type: "address[]" }],
+  },
+  {
+    type: "function",
+    name: "setMarketOracle",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "market", type: "address" },
+      { name: "nextOracle", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "marketById",
+    stateMutability: "view",
+    inputs: [{ name: "marketId", type: "bytes32" }],
+    outputs: [{ name: "market", type: "address" }],
+  },
+  {
+    type: "event",
+    name: "MarketCreated",
+    inputs: [
+      { name: "marketId", type: "bytes32", indexed: true },
+      { name: "market", type: "address", indexed: true },
+      { name: "question", type: "string", indexed: false },
+      { name: "metadataUri", type: "string", indexed: false },
+      { name: "closesAt", type: "uint64", indexed: false },
+    ],
+  },
+] as const;
+
+export const sentraPredictionMarketAbi = [
+  {
+    type: "function",
+    name: "marketId",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "question",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
+  {
+    type: "function",
+    name: "metadataUri",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
+  {
+    type: "function",
+    name: "closesAt",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "resolvedOutcome",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    type: "function",
+    name: "buy",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "isYes", type: "bool" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "sell",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "isYes", type: "bool" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "resolve",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "outcome", type: "uint8" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "yesShares",
+    stateMutability: "view",
+    inputs: [{ name: "trader", type: "address" }],
+    outputs: [{ name: "shares", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "noShares",
+    stateMutability: "view",
+    inputs: [{ name: "trader", type: "address" }],
+    outputs: [{ name: "shares", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "totalYesShares",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "shares", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "totalNoShares",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "shares", type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "PositionBought",
+    inputs: [
+      { name: "trader", type: "address", indexed: true },
+      { name: "isYes", type: "bool", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "PositionSold",
+    inputs: [
+      { name: "trader", type: "address", indexed: true },
+      { name: "isYes", type: "bool", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+] as const;

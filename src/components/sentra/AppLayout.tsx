@@ -13,6 +13,7 @@ import {
   LogOut,
   BookOpen,
   Network,
+  CandlestickChart,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
@@ -28,6 +29,7 @@ import {
 } from "@/lib/arcTestnet";
 
 const nav = [
+  { to: "/markets", label: "Markets", icon: CandlestickChart },
   { to: "/arena", label: "Arena", icon: Swords },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/calls", label: "Calls", icon: Radio },

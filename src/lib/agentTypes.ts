@@ -68,6 +68,7 @@ export type SentraRegistryConfig = {
   reputationOracle: string;
   slashingModule: string;
   callAccess: string;
+  marketFactory: string;
 };
 
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
@@ -80,6 +81,7 @@ export const SENTRA_ARC_TESTNET_DEPLOYMENT: SentraRegistryConfig = {
   reputationOracle: "0x6c395664a45c2ac8ad58562595a97b753444fae8",
   slashingModule: "0xd0e7ed978c3f14224dc9aa42ea7ceddae4b44dd3",
   callAccess: "0x7a4350c31d417cc7fb6c3613a8990f847c8dc06a",
+  marketFactory: "0x88c7922bf41246a2481e132dbbf6ae224861c2e3",
 };
 
 const envAddress = (key: string, fallback: string) =>
@@ -113,6 +115,10 @@ export const SENTRA_PROTOCOL_CONTRACTS: SentraRegistryConfig = {
   callAccess: envAddress(
     "VITE_SENTRA_CALL_ACCESS_ADDRESS",
     SENTRA_ARC_TESTNET_DEPLOYMENT.callAccess,
+  ),
+  marketFactory: envAddress(
+    "VITE_SENTRA_MARKET_FACTORY_ADDRESS",
+    SENTRA_ARC_TESTNET_DEPLOYMENT.marketFactory,
   ),
 };
 

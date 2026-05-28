@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
+import { Route as MarketsRouteImport } from './routes/markets'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DelegateRouteImport } from './routes/delegate'
@@ -19,6 +20,7 @@ import { Route as ArenaRouteImport } from './routes/arena'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CallsIdRouteImport } from './routes/calls.$id'
+import { Route as ApiMarketsRouteImport } from './routes/api.markets'
 import { Route as ApiGenerateAgentImageRouteImport } from './routes/api.generate-agent-image'
 import { Route as ApiCircleWebhookRouteImport } from './routes/api.circle-webhook'
 import { Route as ApiAgentWorkerRouteImport } from './routes/api.agent-worker'
@@ -40,6 +42,11 @@ const RegisterRoute = RegisterRouteImport.update({
 const PortfolioRoute = PortfolioRouteImport.update({
   id: '/portfolio',
   path: '/portfolio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketsRoute = MarketsRouteImport.update({
+  id: '/markets',
+  path: '/markets',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -81,6 +88,11 @@ const CallsIdRoute = CallsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => CallsRoute,
+} as any)
+const ApiMarketsRoute = ApiMarketsRouteImport.update({
+  id: '/api/markets',
+  path: '/api/markets',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGenerateAgentImageRoute = ApiGenerateAgentImageRouteImport.update({
   id: '/api/generate-agent-image',
@@ -152,12 +164,14 @@ export interface FileRoutesByFullPath {
   '/delegate': typeof DelegateRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
+  '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
+  '/api/markets': typeof ApiMarketsRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -176,12 +190,14 @@ export interface FileRoutesByTo {
   '/delegate': typeof DelegateRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
+  '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
+  '/api/markets': typeof ApiMarketsRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -201,12 +217,14 @@ export interface FileRoutesById {
   '/delegate': typeof DelegateRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
+  '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
+  '/api/markets': typeof ApiMarketsRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -227,12 +245,14 @@ export interface FileRouteTypes {
     | '/delegate'
     | '/docs'
     | '/login'
+    | '/markets'
     | '/portfolio'
     | '/register'
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/api/generate-agent-image'
+    | '/api/markets'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -251,12 +271,14 @@ export interface FileRouteTypes {
     | '/delegate'
     | '/docs'
     | '/login'
+    | '/markets'
     | '/portfolio'
     | '/register'
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/api/generate-agent-image'
+    | '/api/markets'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -275,12 +297,14 @@ export interface FileRouteTypes {
     | '/delegate'
     | '/docs'
     | '/login'
+    | '/markets'
     | '/portfolio'
     | '/register'
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/api/generate-agent-image'
+    | '/api/markets'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -300,12 +324,14 @@ export interface RootRouteChildren {
   DelegateRoute: typeof DelegateRoute
   DocsRoute: typeof DocsRoute
   LoginRoute: typeof LoginRoute
+  MarketsRoute: typeof MarketsRoute
   PortfolioRoute: typeof PortfolioRoute
   RegisterRoute: typeof RegisterRoute
   AgentIdRoute: typeof AgentIdRoute
   ApiAgentWorkerRoute: typeof ApiAgentWorkerRoute
   ApiCircleWebhookRoute: typeof ApiCircleWebhookRoute
   ApiGenerateAgentImageRoute: typeof ApiGenerateAgentImageRoute
+  ApiMarketsRoute: typeof ApiMarketsRoute
   ApiAgentMetadataIdRoute: typeof ApiAgentMetadataIdRoute
   ApiRuntimeAgentsRoute: typeof ApiRuntimeAgentsRouteWithChildren
   ApiRuntimeDatasetRoute: typeof ApiRuntimeDatasetRoute
@@ -329,6 +355,13 @@ declare module '@tanstack/react-router' {
       path: '/portfolio'
       fullPath: '/portfolio'
       preLoaderRoute: typeof PortfolioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/markets': {
+      id: '/markets'
+      path: '/markets'
+      fullPath: '/markets'
+      preLoaderRoute: typeof MarketsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -386,6 +419,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/calls/$id'
       preLoaderRoute: typeof CallsIdRouteImport
       parentRoute: typeof CallsRoute
+    }
+    '/api/markets': {
+      id: '/api/markets'
+      path: '/api/markets'
+      fullPath: '/api/markets'
+      preLoaderRoute: typeof ApiMarketsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/generate-agent-image': {
       id: '/api/generate-agent-image'
@@ -503,12 +543,14 @@ const rootRouteChildren: RootRouteChildren = {
   DelegateRoute: DelegateRoute,
   DocsRoute: DocsRoute,
   LoginRoute: LoginRoute,
+  MarketsRoute: MarketsRoute,
   PortfolioRoute: PortfolioRoute,
   RegisterRoute: RegisterRoute,
   AgentIdRoute: AgentIdRoute,
   ApiAgentWorkerRoute: ApiAgentWorkerRoute,
   ApiCircleWebhookRoute: ApiCircleWebhookRoute,
   ApiGenerateAgentImageRoute: ApiGenerateAgentImageRoute,
+  ApiMarketsRoute: ApiMarketsRoute,
   ApiAgentMetadataIdRoute: ApiAgentMetadataIdRoute,
   ApiRuntimeAgentsRoute: ApiRuntimeAgentsRouteWithChildren,
   ApiRuntimeDatasetRoute: ApiRuntimeDatasetRoute,
