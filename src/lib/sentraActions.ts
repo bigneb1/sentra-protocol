@@ -40,7 +40,7 @@ import {
   computeReputationDelta,
 } from "@/lib/sentraScoring";
 import type { AgentStrategy } from "@/lib/agentTypes";
-import { SENTRA_PAID_CALL_PRICE_USDC } from "@/lib/sentraConstants";
+import { SENTRA_MIN_AGENT_STAKE_USDC, SENTRA_PAID_CALL_PRICE_USDC } from "@/lib/sentraConstants";
 import { runtimeUpstreamBaseUrl } from "@/lib/runtimeProxy";
 
 const strategies = ["Macro", "Sports", "Contrarian", "Yield", "Tech", "Custom"] as const;
@@ -975,7 +975,10 @@ export const registerAgentAction = createServerFn({ method: "POST" })
       strategy: z.enum(strategies),
       description: z.string().max(200).optional(),
       imageUrl: agentImageUrlSchema.optional().nullable(),
-      stakeUsdc: money,
+      stakeUsdc: money.min(
+        SENTRA_MIN_AGENT_STAKE_USDC,
+        `Agent creator stake must be at least ${SENTRA_MIN_AGENT_STAKE_USDC} USDC`,
+      ),
       delegationCapUsdc: money,
       minConfidenceBps: z.number().int().min(0).max(10_000),
       maxActivePredictions: z.number().int().min(1).max(100),

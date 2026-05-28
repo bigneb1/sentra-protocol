@@ -14,6 +14,7 @@ import {
   BookOpen,
   Network,
   CandlestickChart,
+  RefreshCw,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
@@ -30,6 +31,7 @@ import {
 
 const nav = [
   { to: "/markets", label: "Markets", icon: CandlestickChart },
+  { to: "/swap", label: "Swap", icon: RefreshCw },
   { to: "/arena", label: "Arena", icon: Swords },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/calls", label: "Calls", icon: Radio },

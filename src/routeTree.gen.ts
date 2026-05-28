@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SwapRouteImport } from './routes/swap'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PortfolioRouteImport } from './routes/portfolio'
 import { Route as MarketsRouteImport } from './routes/markets'
@@ -20,6 +21,7 @@ import { Route as ArenaRouteImport } from './routes/arena'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CallsIdRouteImport } from './routes/calls.$id'
+import { Route as ApiSwapQuoteRouteImport } from './routes/api.swap-quote'
 import { Route as ApiMarketsRouteImport } from './routes/api.markets'
 import { Route as ApiGenerateAgentImageRouteImport } from './routes/api.generate-agent-image'
 import { Route as ApiCircleWebhookRouteImport } from './routes/api.circle-webhook'
@@ -34,6 +36,11 @@ import { Route as ApiRuntimeMetadataIdRouteImport } from './routes/api.runtime.m
 import { Route as ApiRuntimeCallsIdRouteImport } from './routes/api.runtime.calls.$id'
 import { Route as ApiRuntimeAgentsIdDeploymentRouteImport } from './routes/api.runtime.agents.$id.deployment'
 
+const SwapRoute = SwapRouteImport.update({
+  id: '/swap',
+  path: '/swap',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
@@ -88,6 +95,11 @@ const CallsIdRoute = CallsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => CallsRoute,
+} as any)
+const ApiSwapQuoteRoute = ApiSwapQuoteRouteImport.update({
+  id: '/api/swap-quote',
+  path: '/api/swap-quote',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMarketsRoute = ApiMarketsRouteImport.update({
   id: '/api/markets',
@@ -167,11 +179,13 @@ export interface FileRoutesByFullPath {
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
+  '/swap': typeof SwapRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
   '/api/markets': typeof ApiMarketsRoute
+  '/api/swap-quote': typeof ApiSwapQuoteRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -193,11 +207,13 @@ export interface FileRoutesByTo {
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
+  '/swap': typeof SwapRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
   '/api/markets': typeof ApiMarketsRoute
+  '/api/swap-quote': typeof ApiSwapQuoteRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -220,11 +236,13 @@ export interface FileRoutesById {
   '/markets': typeof MarketsRoute
   '/portfolio': typeof PortfolioRoute
   '/register': typeof RegisterRoute
+  '/swap': typeof SwapRoute
   '/agent/$id': typeof AgentIdRoute
   '/api/agent-worker': typeof ApiAgentWorkerRoute
   '/api/circle-webhook': typeof ApiCircleWebhookRoute
   '/api/generate-agent-image': typeof ApiGenerateAgentImageRoute
   '/api/markets': typeof ApiMarketsRoute
+  '/api/swap-quote': typeof ApiSwapQuoteRoute
   '/calls/$id': typeof CallsIdRoute
   '/api/agent-metadata/$id': typeof ApiAgentMetadataIdRoute
   '/api/runtime/agents': typeof ApiRuntimeAgentsRouteWithChildren
@@ -248,11 +266,13 @@ export interface FileRouteTypes {
     | '/markets'
     | '/portfolio'
     | '/register'
+    | '/swap'
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/api/generate-agent-image'
     | '/api/markets'
+    | '/api/swap-quote'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -274,11 +294,13 @@ export interface FileRouteTypes {
     | '/markets'
     | '/portfolio'
     | '/register'
+    | '/swap'
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/api/generate-agent-image'
     | '/api/markets'
+    | '/api/swap-quote'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -300,11 +322,13 @@ export interface FileRouteTypes {
     | '/markets'
     | '/portfolio'
     | '/register'
+    | '/swap'
     | '/agent/$id'
     | '/api/agent-worker'
     | '/api/circle-webhook'
     | '/api/generate-agent-image'
     | '/api/markets'
+    | '/api/swap-quote'
     | '/calls/$id'
     | '/api/agent-metadata/$id'
     | '/api/runtime/agents'
@@ -327,11 +351,13 @@ export interface RootRouteChildren {
   MarketsRoute: typeof MarketsRoute
   PortfolioRoute: typeof PortfolioRoute
   RegisterRoute: typeof RegisterRoute
+  SwapRoute: typeof SwapRoute
   AgentIdRoute: typeof AgentIdRoute
   ApiAgentWorkerRoute: typeof ApiAgentWorkerRoute
   ApiCircleWebhookRoute: typeof ApiCircleWebhookRoute
   ApiGenerateAgentImageRoute: typeof ApiGenerateAgentImageRoute
   ApiMarketsRoute: typeof ApiMarketsRoute
+  ApiSwapQuoteRoute: typeof ApiSwapQuoteRoute
   ApiAgentMetadataIdRoute: typeof ApiAgentMetadataIdRoute
   ApiRuntimeAgentsRoute: typeof ApiRuntimeAgentsRouteWithChildren
   ApiRuntimeDatasetRoute: typeof ApiRuntimeDatasetRoute
@@ -343,6 +369,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/swap': {
+      id: '/swap'
+      path: '/swap'
+      fullPath: '/swap'
+      preLoaderRoute: typeof SwapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/register': {
       id: '/register'
       path: '/register'
@@ -419,6 +452,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/calls/$id'
       preLoaderRoute: typeof CallsIdRouteImport
       parentRoute: typeof CallsRoute
+    }
+    '/api/swap-quote': {
+      id: '/api/swap-quote'
+      path: '/api/swap-quote'
+      fullPath: '/api/swap-quote'
+      preLoaderRoute: typeof ApiSwapQuoteRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/markets': {
       id: '/api/markets'
@@ -546,11 +586,13 @@ const rootRouteChildren: RootRouteChildren = {
   MarketsRoute: MarketsRoute,
   PortfolioRoute: PortfolioRoute,
   RegisterRoute: RegisterRoute,
+  SwapRoute: SwapRoute,
   AgentIdRoute: AgentIdRoute,
   ApiAgentWorkerRoute: ApiAgentWorkerRoute,
   ApiCircleWebhookRoute: ApiCircleWebhookRoute,
   ApiGenerateAgentImageRoute: ApiGenerateAgentImageRoute,
   ApiMarketsRoute: ApiMarketsRoute,
+  ApiSwapQuoteRoute: ApiSwapQuoteRoute,
   ApiAgentMetadataIdRoute: ApiAgentMetadataIdRoute,
   ApiRuntimeAgentsRoute: ApiRuntimeAgentsRouteWithChildren,
   ApiRuntimeDatasetRoute: ApiRuntimeDatasetRoute,

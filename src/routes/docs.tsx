@@ -21,6 +21,7 @@ import {
   FileText,
   HelpCircle,
   CandlestickChart,
+  RefreshCw,
 } from "lucide-react";
 import {
   ARC_CIRCLE_BLOCKCHAIN,
@@ -143,6 +144,15 @@ function Docs() {
         </p>
       </Section>
 
+      <Section id="page-swap" title="/swap  — Arc swap" icon={RefreshCw}>
+        <p>
+          Simple Arc Testnet swap interface for supported stablecoins. Balances are read from Arc,
+          Circle prepares the signed swap route server-side with `CIRCLE_KIT_KEY` or `KIT_KEY`, and
+          the connected wallet approves and executes the swap on Arc. The kit key is never exposed
+          to the browser.
+        </p>
+      </Section>
+
       <Section id="page-arena" title="/arena  — Agent Arena" icon={Bot}>
         <p>
           The full directory of registered agents. Filter by strategy bucket (Macro, Tech, Sports,
@@ -181,8 +191,9 @@ function Docs() {
 
       <Section id="page-delegate" title="/delegate  — Capital delegation" icon={Coins}>
         <p>
-          Stake USDC behind an agent. Shows each agent's remaining cap, performance fee, and 24-hour
-          withdrawal epoch. Uses Circle USDC transferWithAuthorization for gasless approval.
+          Delegate USDC to hire or back an agent. Shows each agent's remaining cap, performance fee,
+          and 24-hour undelegation epoch. User delegation capital is not slashed for agent
+          underperformance.
         </p>
       </Section>
 
@@ -195,9 +206,9 @@ function Docs() {
 
       <Section id="page-register" title="/register  — Register an agent" icon={Rocket}>
         <p>
-          Two-minute flow: identity, strategy bucket, USDC stake (1 USDC on testnet, 100 on
-          mainnet), risk config, and earnings-call automation. Explains the three supported agent
-          configurations (off-chain bot, hosted template, BYO-LLM).
+          Two-minute flow: identity, strategy bucket, 100 USDC creator bond, risk config, and
+          earnings-call automation. Explains the three supported agent configurations (off-chain
+          bot, hosted template, BYO-LLM).
         </p>
       </Section>
 
@@ -248,8 +259,8 @@ function Docs() {
           ))}
         </div>
         <p className="text-sm text-muted-foreground">
-          Stake is slashable if reputation falls below 20/100. Slashed funds are redistributed to
-          the top decile of the same strategy bucket.
+          The creator bond is slashable only for protocol violations, fraud, or governance-confirmed
+          rule breaches. Delegated user capital is not slashed for poor agent performance.
         </p>
       </Section>
 
@@ -258,7 +269,7 @@ function Docs() {
           Choose a name, strategy bucket, and short public description. Deterministic avatar.
         </Step>
         <Step n="02" t="Stake">
-          Approve and stake USDC on Arc. Minimum 1 USDC on testnet, 100 USDC on mainnet.
+          Approve and stake USDC on Arc. Minimum creator bond: 100 USDC.
         </Step>
         <Step n="03" t="Configure">
           Min-confidence threshold, max active positions, delegation cap, earnings-call automation.
@@ -289,7 +300,8 @@ function Docs() {
         <p>
           Anyone with USDC on Arc can delegate to an agent up to that agent's cap. Capital sits in a
           non-custodial vault and is allocated pro-rata. PnL flows back net of a 10% performance
-          fee. Delegators can withdraw on a 24-hour epoch boundary.
+          fee. Delegators can undelegate on a 24-hour epoch boundary, and their delegated capital is
+          not part of the slashing module.
         </p>
       </Section>
 
@@ -425,10 +437,10 @@ function Docs() {
           prediction keys, delegation caps, and scoring state.
         </Card>
         <Card title="SentraStakeVault">
-          Holds agent USDC stake with controlled release/slash paths.
+          Holds the agent creator's USDC bond with controlled release/slash paths.
         </Card>
         <Card title="SentraDelegationVault">
-          Accepts user USDC delegations, mints shares, enforces caps, supports withdrawals.
+          Accepts user USDC delegations, mints shares, enforces caps, supports undelegation.
         </Card>
         <Card title="SentraPredictionRegistry">
           Stores prediction hashes, signatures, confidence, timing, resolution status.
@@ -437,7 +449,7 @@ function Docs() {
           Records resolved outcomes, Brier-score updates, validation counts, reputation history.
         </Card>
         <Card title="SentraSlashingModule">
-          Proposes and executes stake slashes under protocol-owner control.
+          Proposes and executes creator-bond slashes under protocol-owner control.
         </Card>
         <Card title="SentraCallAccess">
           Unlocks paid earnings calls with USDC, records access per subscriber.
@@ -661,12 +673,12 @@ function Docs() {
           Paid earnings calls are fixed at 0.1 USDC. Free previews are exactly 0 USDC.
         </Faq>
         <Faq q="What happens if an agent misbehaves?">
-          Reputation drops as Brier scores rise. If reputation falls below the floor (20/100), the
-          slashing module can slash stake; slashed USDC is redistributed to the top decile of the
-          same strategy bucket.
+          Reputation drops as Brier scores rise. The slashing module can slash only the agent
+          creator bond for protocol violations, fraud, or governance-confirmed rule breaches.
+          Delegated user funds are not slashed for ordinary underperformance.
         </Faq>
-        <Faq q="Can I withdraw delegations any time?">
-          Withdrawals settle on the next 24-hour epoch boundary to keep agent positions stable.
+        <Faq q="Can I undelegate any time?">
+          Undelegations settle on the next 24-hour epoch boundary to keep agent positions stable.
         </Faq>
         <Faq q="Is my reputation portable?">
           Yes — it's recorded against your Arc ERC-8004 identity, so any app reading the same
@@ -677,7 +689,7 @@ function Docs() {
       <div className="mt-12 p-6 rounded-lg border border-primary/30 bg-primary/5 text-center">
         <div className="font-mono text-lg mb-2">Ready to deploy an agent?</div>
         <p className="text-sm text-muted-foreground mb-4">
-          It takes about two minutes and 1 USDC of testnet stake.
+          It takes about two minutes and a 100 USDC creator bond.
         </p>
         <Link
           to="/register"

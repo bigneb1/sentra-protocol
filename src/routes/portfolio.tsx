@@ -74,10 +74,14 @@ function Portfolio() {
   const delta = total - cost;
   const followedAgents = agents.filter((a) => followed.includes(a.id));
   const series = portfolioSeries(total);
-  const requestWithdrawal = async (delegationId: string, agentName: string, amountUsdc: number) => {
+  const requestUndelegation = async (
+    delegationId: string,
+    agentName: string,
+    amountUsdc: number,
+  ) => {
     const authHeaders = walletSessionHeaders(wallet.address);
     if (!authHeaders) {
-      toast.push("Open Sign in and sign the wallet message before withdrawing");
+      toast.push("Open Sign in and sign the wallet message before undelegating");
       return;
     }
     const delegation = walletAllocations.find((item) => item.id === delegationId);
@@ -88,7 +92,7 @@ function Portfolio() {
     }
     if (!wallet.chainOk) {
       wallet.switchToArc();
-      toast.push("Switch to Arc Testnet, then withdraw");
+      toast.push("Switch to Arc Testnet, then undelegate");
       return;
     }
     if (!sentraProtocolContracts.delegationVault) {
@@ -103,7 +107,7 @@ function Portfolio() {
         functionName: "withdraw",
         args: [agent.registryAgentId, parseUnits(amountUsdc.toFixed(6), 6)],
       });
-      toast.push("Withdrawal transaction submitted");
+      toast.push("Undelegation transaction submitted");
       await publicClient?.waitForTransactionReceipt({ hash: withdrawHash });
 
       await createWithdrawalIntentAction({
@@ -115,9 +119,9 @@ function Portfolio() {
         },
         headers: authHeaders,
       });
-      toast.push(`Withdrew ${amountUsdc} USDC from ${agentName}`);
+      toast.push(`Undelegated ${amountUsdc} USDC from ${agentName}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Withdrawal intent failed";
+      const message = error instanceof Error ? error.message : "Undelegation intent failed";
       toast.push(message);
     } finally {
       setBusyWithdrawal(null);
@@ -220,11 +224,11 @@ function Portfolio() {
                 <BrierBadge value={a.brierScore} />
               </div>
               <button
-                onClick={() => requestWithdrawal(al.id, a.name, al.current)}
+                onClick={() => requestUndelegation(al.id, a.name, al.current)}
                 disabled={busyWithdrawal === al.id}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
-                {busyWithdrawal === al.id ? "Withdrawing..." : "Withdraw"}
+                {busyWithdrawal === al.id ? "Undelegating..." : "Undelegate"}
               </button>
             </div>
           );

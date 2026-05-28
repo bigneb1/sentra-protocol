@@ -43,7 +43,7 @@ function Delegate() {
   const [amount, setAmount] = useState(50);
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [confetti, setConfetti] = useState(false);
-  const [busy, setBusy] = useState<"approve" | "delegate" | "withdraw" | null>(null);
+  const [busy, setBusy] = useState<"approve" | "delegate" | "undelegate" | null>(null);
   const [lastTxHash, setLastTxHash] = useState<`0x${string}` | null>(null);
 
   const selected = agents.find((a) => a.id === agentId) ?? agents[0];
@@ -148,10 +148,14 @@ function Delegate() {
     }
   };
 
-  const requestWithdrawal = async (delegationId: string, agentName: string, amountUsdc: number) => {
+  const requestUndelegation = async (
+    delegationId: string,
+    agentName: string,
+    amountUsdc: number,
+  ) => {
     const authHeaders = walletSessionHeaders(wallet.address);
     if (!authHeaders) {
-      toast.push("Open Sign in and sign the wallet message before withdrawing");
+      toast.push("Open Sign in and sign the wallet message before undelegating");
       return;
     }
     const delegation = delegations.find((item) => item.id === delegationId);
@@ -162,7 +166,7 @@ function Delegate() {
     }
     if (!wallet.chainOk) {
       wallet.switchToArc();
-      toast.push("Switch to Arc Testnet, then withdraw");
+      toast.push("Switch to Arc Testnet, then undelegate");
       return;
     }
     if (!sentraProtocolContracts.delegationVault) {
@@ -170,14 +174,14 @@ function Delegate() {
       return;
     }
     try {
-      setBusy("withdraw");
+      setBusy("undelegate");
       const withdrawHash = await writeContractAsync({
         address: sentraProtocolContracts.delegationVault as Address,
         abi: sentraDelegationVaultAbi,
         functionName: "withdraw",
         args: [agent.registryAgentId, parseUnits(amountUsdc.toFixed(6), 6)],
       });
-      toast.push("Withdrawal transaction submitted");
+      toast.push("Undelegation transaction submitted");
       await publicClient?.waitForTransactionReceipt({ hash: withdrawHash });
 
       const result = await createWithdrawalIntentAction({
@@ -191,11 +195,11 @@ function Delegate() {
       });
       toast.push(
         result.status === "confirmed"
-          ? `Withdrew ${amountUsdc} USDC from ${agentName}`
-          : `Withdrawal intent queued for ${agentName}`,
+          ? `Undelegated ${amountUsdc} USDC from ${agentName}`
+          : `Undelegation intent queued for ${agentName}`,
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Withdrawal intent failed";
+      const message = error instanceof Error ? error.message : "Undelegation intent failed";
       toast.push(message);
     } finally {
       setBusy(null);
@@ -378,8 +382,8 @@ function Delegate() {
                       ? "Approving USDC..."
                       : busy === "delegate"
                         ? "Delegating..."
-                        : busy === "withdraw"
-                          ? "Withdrawing..."
+                        : busy === "undelegate"
+                          ? "Undelegating..."
                           : "Confirm Delegation"}
                   </button>
                 )}
@@ -484,10 +488,11 @@ function Delegate() {
                   <span className="font-mono">${al.current.toFixed(0)}</span>
                   <span className="font-mono text-[#10B981]">+{al.ret.toFixed(1)}%</span>
                   <button
-                    onClick={() => requestWithdrawal(al.id, al.name, al.current)}
-                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => requestUndelegation(al.id, al.name, al.current)}
+                    disabled={busy === "undelegate"}
+                    className="rounded border border-border px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-elevated disabled:opacity-50"
                   >
-                    ×
+                    Undelegate
                   </button>
                 </div>
               ))}

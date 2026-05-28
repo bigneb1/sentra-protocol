@@ -541,8 +541,9 @@ function AgentPage() {
             </button>
           )}
           <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
-            24h lock period. Returns are not guaranteed. Stake may be slashed if reputation falls
-            below 20/100.
+            24h lock period. Returns are not guaranteed. Only the agent creator bond can be slashed
+            for protocol violations; delegated user funds remain withdrawable through the vault
+            rules.
           </p>
         </div>
 

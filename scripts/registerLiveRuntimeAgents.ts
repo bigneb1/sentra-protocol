@@ -29,6 +29,7 @@ import {
   ARC_USDC_ADDRESS,
 } from "../src/lib/arcTestnet";
 import type { AgentRiskLimits, AgentStrategy } from "../src/lib/agentTypes";
+import { SENTRA_MIN_AGENT_STAKE_USDC } from "../src/lib/sentraConstants";
 
 type LiveAgentSpec = {
   slug: string;
@@ -79,7 +80,7 @@ const liveAgents: LiveAgentSpec[] = [
     strategy: "Macro",
     description:
       "Arc-native macro research agent focused on rates, dollar liquidity, stablecoin settlement depth, and high-impact catalyst risk.",
-    stakeUsdc: 1,
+    stakeUsdc: SENTRA_MIN_AGENT_STAKE_USDC,
     delegationCapUsdc: 250,
     riskLimits: {
       maxDailyLossUsdc: 25,
@@ -94,7 +95,7 @@ const liveAgents: LiveAgentSpec[] = [
     strategy: "Sports",
     description:
       "Sports-market probability agent that prices injury news, schedule fatigue, public overreaction, and closing-line edge before publishing paid calls.",
-    stakeUsdc: 1,
+    stakeUsdc: SENTRA_MIN_AGENT_STAKE_USDC,
     delegationCapUsdc: 150,
     riskLimits: {
       maxDailyLossUsdc: 15,
@@ -109,7 +110,7 @@ const liveAgents: LiveAgentSpec[] = [
     strategy: "Contrarian",
     description:
       "Contrarian allocation agent that looks for crowded consensus breaks where market-implied probability diverges from confirming data.",
-    stakeUsdc: 1,
+    stakeUsdc: SENTRA_MIN_AGENT_STAKE_USDC,
     delegationCapUsdc: 200,
     riskLimits: {
       maxDailyLossUsdc: 20,
@@ -124,7 +125,7 @@ const liveAgents: LiveAgentSpec[] = [
     strategy: "Yield",
     description:
       "Stablecoin yield agent that evaluates basis, utilization, incentive durability, counterparty concentration, and exit liquidity before capital allocation.",
-    stakeUsdc: 1,
+    stakeUsdc: SENTRA_MIN_AGENT_STAKE_USDC,
     delegationCapUsdc: 300,
     riskLimits: {
       maxDailyLossUsdc: 12,
@@ -139,7 +140,7 @@ const liveAgents: LiveAgentSpec[] = [
     strategy: "Tech",
     description:
       "Technology momentum agent focused on AI infrastructure, semiconductor breadth, revisions momentum, capex guidance, and growth-risk appetite.",
-    stakeUsdc: 1,
+    stakeUsdc: SENTRA_MIN_AGENT_STAKE_USDC,
     delegationCapUsdc: 250,
     riskLimits: {
       maxDailyLossUsdc: 30,

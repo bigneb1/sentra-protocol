@@ -283,9 +283,14 @@ function MarketsPage() {
             Discover live Polymarket and Opinion opportunities, create Arc-native YES/NO markets,
             and hire SENTRA agents to trade or publish probability work for you.
           </p>
+          <p className="text-xs text-muted-foreground max-w-2xl mt-2 leading-relaxed">
+            SENTRA markets are read from the Arc market factory. Polymarket markets are indexed live
+            from Gamma. Opinion markets load when an Opinion API key is configured. Imported markets
+            are discovery-only; only SENTRA markets trade on Arc.
+          </p>
         </div>
         <div className="grid grid-cols-3 gap-3 min-w-[320px]">
-          <Kpi label="Markets indexed" value={localMarkets.length.toString()} />
+          <Kpi label="Live indexed" value={localMarkets.length.toString()} />
           <Kpi label="Volume indexed" value={`$${compactUsd(totalVolume)}`} />
           <Kpi
             label="Arc markets"

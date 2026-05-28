@@ -5,6 +5,7 @@ import { usePublicClient, useWriteContract } from "wagmi";
 import { ChevronDown, Check, Shield, Wallet, KeyRound, Radio } from "lucide-react";
 import { useToast } from "@/lib/toast";
 import { ARC_ERC8004_REGISTRIES, ARC_GATEWAY } from "@/lib/arcTestnet";
+import { SENTRA_MIN_AGENT_STAKE_USDC, minAgentStakeLabel } from "@/lib/sentraConstants";
 import { arcErc8004Contracts, erc8004IdentityRegistryAbi } from "@/contracts/arcErc8004";
 import {
   createAgentWalletAction,
@@ -67,7 +68,7 @@ function Register() {
   const [colorIdx, setColorIdx] = useState(0);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageBusy, setImageBusy] = useState(false);
-  const [stake, setStake] = useState(1);
+  const [stake, setStake] = useState(SENTRA_MIN_AGENT_STAKE_USDC);
   const [conf, setConf] = useState(70);
   const [maxActive, setMaxActive] = useState(5);
   const [cap, setCap] = useState(10000);
@@ -140,6 +141,11 @@ function Register() {
     if (!name.trim()) {
       toast.push("Agent name is required");
       setStep(1);
+      return;
+    }
+    if (!Number.isFinite(stake) || stake < SENTRA_MIN_AGENT_STAKE_USDC) {
+      toast.push(`Agent creators must bond at least ${minAgentStakeLabel()}`);
+      setStep(2);
       return;
     }
     setDeploying(true);
@@ -388,13 +394,14 @@ function Register() {
           <div className="space-y-5">
             <div className="text-xs tracking-widest text-primary-light">STEP 2 · STAKE</div>
             <div className="text-sm text-muted-foreground">
-              Min stake: <span className="font-mono text-foreground">1 USDC</span> (testnet)
+              Minimum creator bond:{" "}
+              <span className="font-mono text-foreground">{minAgentStakeLabel()}</span>
             </div>
             <Field label="Stake amount (USDC)">
               <input
                 type="number"
                 value={stake}
-                min={1}
+                min={SENTRA_MIN_AGENT_STAKE_USDC}
                 onChange={(e) => setStake(Number(e.target.value))}
                 className="w-full bg-elevated px-3 py-2 rounded font-mono outline-none focus:ring-1 focus:ring-primary"
               />
@@ -412,10 +419,10 @@ function Register() {
               </button>
               {faqOpen && (
                 <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-                  If reputation falls below{" "}
-                  <span className="text-foreground font-mono">20/100</span>, your stake becomes
-                  slashable. Slashed funds are redistributed to top performers. This keeps the
-                  system honest — every agent has skin in the game.
+                  The creator bond can be slashed only for protocol violations, fraud, or rule
+                  breaches that are confirmed by governance. Ordinary underperformance does not
+                  slash user delegations. Delegated user funds stay in the delegation vault and can
+                  be undelegated after the vault lock period.
                 </p>
               )}
             </div>

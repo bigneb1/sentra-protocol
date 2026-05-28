@@ -97,6 +97,7 @@ Agents should not run in the browser. The frontend is the marketplace, wallet UI
 | --------------------------- | ----------------------------------------------------------------------- |
 | `/`                         | Home dashboard, marketplace overview, protocol stats                    |
 | `/markets`                   | Prediction market discovery, creation, trading, and agent-hire entry    |
+| `/swap`                      | Arc stablecoin swap interface with Circle-prepared wallet execution     |
 | `/arena`                    | Agent marketplace with filters and ranking                              |
 | `/agent/$id`                | Agent profile, strategy, reputation, predictions, calls, delegation CTA |
 | `/analytics`                | Leaderboards, accuracy, PnL, strategy comparison                        |
@@ -388,8 +389,9 @@ Current Arc-registered live agents:
 | Yield      | Sentra Yield Sentinel   | `sentra-yield-sentinel`   | `0xb329e2424ff787c79d63fd056be4bc9976b0496c0e186ce62989751290a910e0` | `25493`     | `0x358b71b3e6f2df4758553d162866ebe11ff4907b` |
 | Tech       | Sentra Tech Momentum    | `sentra-tech-momentum`    | `0x80281f18a8654fbe1abc132c6174d5fbf5bbeeab75d9ad72aff4cb1464eeffec` | `25494`     | `0xb5c3befbca208660de9d5f702f7ed41177fb3914` |
 
-Each live agent has 1 USDC testnet stake and one paid call priced at `0.1 USDC` through
-`SentraCallAccess`.
+Each live agent now uses the 100 USDC creator-bond rule and one paid call priced at `0.1 USDC`
+through `SentraCallAccess`. Delegated user capital is held in the delegation vault and is not
+slashed for ordinary agent underperformance.
 
 Run a one-shot call generation job:
 

@@ -16,7 +16,10 @@ import { sentraCallAccessAbi, sentraProtocolContracts } from "../src/contracts/s
 import { arcTestnet } from "../src/lib/wagmi";
 import type { Agent, EarningsCall, SentraDataset, VaultTransaction } from "../src/lib/sentraData";
 import type { AgentStrategy } from "../src/lib/agentTypes";
-import { SENTRA_PAID_CALL_PRICE_USDC } from "../src/lib/sentraConstants";
+import {
+  SENTRA_MIN_AGENT_STAKE_USDC,
+  SENTRA_PAID_CALL_PRICE_USDC,
+} from "../src/lib/sentraConstants";
 
 type RuntimeState = Omit<SentraDataset, "scheduledMarkets"> & {
   source: "sentra-vps-agent-runtime";
@@ -847,6 +850,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const strategyHash = isBytes32(body.strategyHash) ? body.strategyHash : null;
     const riskHash = isBytes32(body.riskHash) ? body.riskHash : null;
     const predictionKeyHash = isBytes32(body.predictionKeyHash) ? body.predictionKeyHash : null;
+    const stakeUsdc = numericField(body.stakeUsdc, 0);
     if (
       !slug ||
       !name ||
@@ -855,9 +859,15 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       !metadataHash ||
       !strategyHash ||
       !riskHash ||
-      !predictionKeyHash
+      !predictionKeyHash ||
+      stakeUsdc < SENTRA_MIN_AGENT_STAKE_USDC
     ) {
-      sendJson(res, 400, { error: "Invalid agent payload" });
+      sendJson(res, 400, {
+        error:
+          stakeUsdc < SENTRA_MIN_AGENT_STAKE_USDC
+            ? `Agent creator stake must be at least ${SENTRA_MIN_AGENT_STAKE_USDC} USDC`
+            : "Invalid agent payload",
+      });
       return;
     }
 
@@ -878,7 +888,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       strategyHash,
       riskHash,
       predictionKeyHash,
-      stakeUsdc: Math.max(0, numericField(body.stakeUsdc, 0)),
+      stakeUsdc,
       delegationCapUsdc: Math.max(0, numericField(body.delegationCapUsdc, 0)),
       riskLimits: riskLimitsField(body.riskLimits),
       autoCalls: body.autoCalls !== false,
