@@ -51,6 +51,12 @@ const bytes32 = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const txHashSchema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const signatureSchema = z.string().regex(/^0x[a-fA-F0-9]+$/);
 const callIdSchema = z.string().min(1).max(128);
+const agentImageUrlSchema = z
+  .string()
+  .max(500_000, "Agent image must be 500 KB or smaller")
+  .refine((value) => value.startsWith("data:image/") || /^https?:\/\//i.test(value), {
+    message: "Agent image must be a data:image URL or an HTTP(S) URL",
+  });
 
 const arcChain = {
   id: ARC_CHAIN_ID,
@@ -280,17 +286,27 @@ async function runtimeFullCall(callId: string): Promise<{
 }
 
 async function runtimePreviewCall(callId: string) {
+  const direct = await loadRuntimeDatasetDirect();
+  const directCall = direct?.earningsCalls.find((item) => item.id === callId);
+  if (directCall) return directCall;
+
   const { loadRuntimeDataset } = await import("@/lib/runtimeDataset");
   const runtime = await loadRuntimeDataset();
   return runtime?.earningsCalls.find((item) => item.id === callId) ?? null;
 }
 
 async function loadRuntimeDatasetDirect() {
-  const response = await fetch(`${runtimeWriteBaseUrl()}/dataset`, {
-    headers: { accept: "application/json" },
-  });
-  if (!response.ok) return null;
-  return (await response.json()) as import("@/lib/runtimeDataset").RuntimeDataset;
+  try {
+    const baseUrl = runtimeWriteBaseUrl();
+    if (!baseUrl) return null;
+    const response = await fetch(`${baseUrl}/dataset`, {
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as import("@/lib/runtimeDataset").RuntimeDataset;
+  } catch {
+    return null;
+  }
 }
 
 async function verifyOnchainCallUnlock(input: {
@@ -958,7 +974,7 @@ export const registerAgentAction = createServerFn({ method: "POST" })
       name: z.string().min(2).max(32),
       strategy: z.enum(strategies),
       description: z.string().max(200).optional(),
-      imageUrl: z.string().max(5000).optional().nullable(),
+      imageUrl: agentImageUrlSchema.optional().nullable(),
       stakeUsdc: money,
       delegationCapUsdc: money,
       minConfidenceBps: z.number().int().min(0).max(10_000),
@@ -2202,7 +2218,29 @@ export const unlockCallAction = createServerFn({ method: "POST" })
       };
     }
 
-    const supabaseAdmin = await getSupabaseAdmin();
+    const supabaseAdmin = await getOptionalSupabaseAdmin();
+    if (!supabaseAdmin) {
+      const price = SENTRA_PAID_CALL_PRICE_USDC;
+      if (data.txHash && !data.payerAddress) {
+        throw new Error("Payer wallet address is required for on-chain call unlocks");
+      }
+      if (data.txHash && data.payerAddress) {
+        await verifyOnchainCallUnlock({
+          callId: data.callId,
+          price,
+          txHash: data.txHash,
+          payerAddress: data.payerAddress,
+        });
+        return { status: "unlocked" as const, unlockId: `onchain:${data.callId}` };
+      }
+      return {
+        status: "payment_required" as const,
+        transactionId: `onchain:${data.callId}`,
+        amountUsdc: price,
+        callAccess: getProtocolContracts().callAccess,
+      };
+    }
+
     const { data: call, error: callError } = await supabaseAdmin
       .from("earnings_calls")
       .select("*")
@@ -2375,7 +2413,27 @@ export const getUnlockedCallAction = createServerFn({ method: "POST" })
       };
     }
 
-    const supabaseAdmin = await getSupabaseAdmin();
+    const supabaseAdmin = await getOptionalSupabaseAdmin();
+    if (!supabaseAdmin) {
+      const canRead = await runtimeCallHasAccess(data.callId, walletAddress);
+      if (!canRead) throw new Error("Call is locked");
+      const full = await runtimeFullCall(data.callId);
+      return {
+        id: full.id,
+        agentId: full.agentId,
+        callDate: full.date,
+        durationSeconds: full.durationSeconds,
+        transcript: full.transcript,
+        pnlSummary: full.pnlSummary,
+        biggestWin: full.biggestWin,
+        biggestLoss: full.biggestLoss,
+        tomorrowThesis: full.tomorrowThesis,
+        audioUrl: full.audioUrl,
+        priceUsdc: full.subscriptionCost,
+        isFreePreview: full.isFreePreview,
+      };
+    }
+
     const { data: call, error: callError } = await supabaseAdmin
       .from("earnings_calls")
       .select("*")

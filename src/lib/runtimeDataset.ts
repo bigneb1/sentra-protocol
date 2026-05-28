@@ -15,10 +15,15 @@ function defaultRuntimeUrl() {
   if (typeof window !== "undefined") {
     return env?.VITE_SENTRA_RUNTIME_DATASET_URL ?? "/api/runtime/dataset";
   }
+  const upstream =
+    nodeEnv?.SENTRA_AGENT_RUNTIME_UPSTREAM_URL ??
+    nodeEnv?.SENTRA_RUNTIME_UPSTREAM_URL ??
+    nodeEnv?.SENTRA_AGENT_RUNTIME_ORIGIN;
   return (
     nodeEnv?.SENTRA_AGENT_RUNTIME_URL ??
+    (upstream ? `${upstream.replace(/\/+$/, "")}/dataset` : undefined) ??
     env?.VITE_SENTRA_RUNTIME_DATASET_URL ??
-    "http://127.0.0.1:19080/dataset"
+    "http://144.91.76.243:19080/dataset"
   );
 }
 

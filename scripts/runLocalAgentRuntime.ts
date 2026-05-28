@@ -872,7 +872,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       name,
       strategy,
       description: stringField(body.description).slice(0, 500),
-      imageUrl: stringField(body.imageUrl).slice(0, 4096) || previous?.imageUrl || null,
+      imageUrl: stringField(body.imageUrl).slice(0, 500_000) || previous?.imageUrl || null,
       registryAgentId,
       metadataHash,
       strategyHash,
