@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useBalance, usePublicClient, useReadContracts, useWriteContract } from "wagmi";
-import { ArrowDownUp, ExternalLink, RefreshCw, Wallet, Zap } from "lucide-react";
+import { ArrowDownUp, ExternalLink, RefreshCw, Wallet } from "lucide-react";
 import { circleSwapAdapterAbi, erc20ApprovalAbi } from "@/contracts/sentraProtocol";
 import {
   ARC_CHAIN_ID,
@@ -396,14 +396,6 @@ function SwapPage() {
         </div>
 
         <div className="mt-4 grid gap-3 text-xs text-muted-foreground">
-          <div className="sentra-card p-4">
-            <div className="mb-2 flex items-center gap-2 font-mono text-foreground">
-              <Zap size={14} className="text-primary-light" /> Route
-            </div>
-            Quotes and swap calldata use Circle's server-side Stablecoin Service when
-            `CIRCLE_KIT_KEY` or `KIT_KEY` is configured. The kit key is never exposed to the
-            browser.
-          </div>
           <div className="sentra-card p-4">
             <div className="mb-2 flex items-center gap-2 font-mono text-foreground">
               <Wallet size={14} className="text-primary-light" /> Wallet execution
